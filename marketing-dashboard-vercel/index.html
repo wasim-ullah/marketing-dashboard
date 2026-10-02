@@ -1,51 +1,709 @@
-export default async function handler(req, res) {
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Performance Dashboard - BuyAnyInsurance</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-  const { API_USERNAME, API_PASSWORD } = process.env;
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
 
-  if (!API_USERNAME || !API_PASSWORD) {
-    return res.status(500).json({
-      success: false,
-      message: 'API credentials not configured in backend'
-    });
-  }
+        .login-container {
+            display: none;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 400px;
+        }
 
-  try {
-    const { dateFrom, dateTo } = req.body;
+        .login-container.active {
+            display: block;
+        }
 
-    // Validate inputs
-    if (!dateFrom || !dateTo) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: dateFrom, dateTo'
-      });
-    }
+        .login-container h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 24px;
+        }
 
-    // Call BuyAnyInsurance API with stored credentials
-    const response = await fetch('https://ext.buyanyinsurance.ae/api/marketing/dashboard', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${Buffer.from(`${API_USERNAME}:${API_PASSWORD}`).toString('base64')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        start_date: dateFrom,
-        end_date: dateTo
-      })
-    });
+        .login-container .form-group {
+            margin-bottom: 20px;
+        }
 
-    const data = await response.json();
+        .login-container label {
+            display: block;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
 
-    // Pass through the status code and data from BuyAnyInsurance API
-    res.status(response.status).json(data);
-  } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-}
+        .login-container input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .login-container input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-container button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .login-container button:hover {
+            transform: translateY(-2px);
+        }
+
+        .dashboard-container {
+            display: none;
+            width: 100%;
+            background: white;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        .dashboard-container.active {
+            display: block;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .logout-btn {
+            padding: 10px 20px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: #c0392b;
+        }
+
+        .date-selector {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .date-selector h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .date-controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .preset-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .preset-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .preset-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .date-input {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 12px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .kpi-card h4 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-card .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .kpi-card .change {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .chart-container h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        canvas {
+            max-height: 350px;
+        }
+
+        .table-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            overflow-x: auto;
+        }
+
+        .table-container h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        table thead {
+            background: #f8f9fa;
+            border-bottom: 2px solid #ddd;
+        }
+
+        table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+        }
+
+        table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .date-controls {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-container active" id="loginContainer">
+        <h1>Marketing Dashboard</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" placeholder="Enter username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter password" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div class="dashboard-container" id="dashboardContainer">
+        <div class="header">
+            <h1>Marketing Performance Dashboard</h1>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="date-selector">
+            <h3>Select Date Range</h3>
+            <div class="date-controls">
+                <button class="preset-btn active" onclick="setDateRange(7)">Last 7 Days</button>
+                <button class="preset-btn" onclick="setDateRange(30)">Last 30 Days</button>
+                <button class="preset-btn" onclick="setDateRange(90)">Last 90 Days</button>
+                <span style="color: #666; font-weight: 500;">Or select custom range:</span>
+                <input type="date" id="dateFrom" class="date-input" onchange="loadDashboard()">
+                <input type="date" id="dateTo" class="date-input" onchange="loadDashboard()">
+            </div>
+        </div>
+
+        <div id="kpiCards" class="kpi-grid"></div>
+        <div id="chartsContainer" class="charts-grid"></div>
+        <div id="tableContainer" class="table-container"></div>
+    </div>
+
+    <script>
+        // Credentials
+        const VALID_USERNAME = 'BuyAnyIns#2024@Analytics';
+        const VALID_PASSWORD = 'K@m3l@h#Tr@ck1ng$Dashboard#Secure2024!';
+
+        // Format number helper - FIXED to handle string values with commas
+        function formatNumber(value) {
+            if (typeof value === 'string') {
+                // Remove commas and convert to float
+                return parseFloat(value.replace(/,/g, ''));
+            }
+            return parseFloat(value) || 0;
+        }
+
+        // Format currency helper
+        function formatCurrency(value) {
+            const num = formatNumber(value);
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }).format(num);
+        }
+
+        // Format percentage helper
+        function formatPercent(value) {
+            const num = formatNumber(value);
+            return (num * 100).toFixed(2) + '%';
+        }
+
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+                sessionStorage.setItem('authenticated', 'true');
+                document.getElementById('loginContainer').classList.remove('active');
+                document.getElementById('dashboardContainer').classList.add('active');
+                initializeDashboard();
+            } else {
+                alert('Invalid credentials. Please try again.');
+            }
+        });
+
+        function logout() {
+            sessionStorage.removeItem('authenticated');
+            document.getElementById('dashboardContainer').classList.remove('active');
+            document.getElementById('loginContainer').classList.add('active');
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+
+        // Check if user is authenticated
+        function checkAuth() {
+            const isAuthenticated = sessionStorage.getItem('authenticated');
+            if (!isAuthenticated) {
+                document.getElementById('loginContainer').classList.add('active');
+                document.getElementById('dashboardContainer').classList.remove('active');
+            } else {
+                document.getElementById('loginContainer').classList.remove('active');
+                document.getElementById('dashboardContainer').classList.add('active');
+            }
+        }
+
+        // Initialize dashboard
+        function initializeDashboard() {
+            // Set default date range (last 7 days)
+            const today = new Date();
+            const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+            document.getElementById('dateTo').value = formatDate(today);
+            document.getElementById('dateFrom').value = formatDate(sevenDaysAgo);
+
+            loadDashboard();
+
+            // Auto-refresh every 5 minutes
+            setInterval(loadDashboard, 5 * 60 * 1000);
+        }
+
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function setDateRange(days) {
+            const today = new Date();
+            const startDate = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+
+            document.getElementById('dateTo').value = formatDate(today);
+            document.getElementById('dateFrom').value = formatDate(startDate);
+
+            // Update active button
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+
+            if (!dateFrom || !dateTo) {
+                showMessage('Please select both start and end dates', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/fetch-dashboard', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dateFrom: dateFrom,
+                        dateTo: dateTo
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showMessage(`Error: ${data.error}`, 'error');
+                    return;
+                }
+
+                renderDashboard(data);
+                showMessage('Dashboard updated successfully', 'success');
+            } catch (error) {
+                showMessage(`Failed to fetch dashboard: ${error.message}`, 'error');
+                console.error('Error:', error);
+            }
+        }
+
+        function renderDashboard(data) {
+            renderKPIs(data);
+            renderCharts(data);
+            renderTable(data);
+        }
+
+        function renderKPIs(data) {
+            const kpiContainer = document.getElementById('kpiCards');
+            kpiContainer.innerHTML = '';
+
+            const metrics = data.data || [];
+
+            // Calculate aggregated KPIs
+            let totalLeads = 0;
+            let newLeads = 0;
+            let totalSales = 0;
+            let totalSpend = 0;
+            let totalRevenue = 0;
+
+            metrics.forEach(metric => {
+                totalLeads += formatNumber(metric.total_leads || 0);
+                newLeads += formatNumber(metric.new_leads || 0);
+                totalSales += formatNumber(metric.sales || 0);
+                totalSpend += formatNumber(metric.marketing_spend || 0);
+                totalRevenue += formatNumber(metric.total_revenue || 0);
+            });
+
+            const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
+
+            const kpis = [
+                { title: 'Total Leads', value: totalLeads, icon: '📊' },
+                { title: 'New Leads', value: newLeads, icon: '✨' },
+                { title: 'Sales', value: totalSales, icon: '💰' },
+                { title: 'Marketing Spend', value: formatCurrency(totalSpend), icon: '💵' },
+                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '📈' },
+                { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: '🎯' }
+            ];
+
+            kpis.forEach(kpi => {
+                const card = document.createElement('div');
+                card.className = 'kpi-card';
+                card.innerHTML = `
+                    <h4>${kpi.icon} ${kpi.title}</h4>
+                    <div class="value">${typeof kpi.value === 'number' ? kpi.value.toLocaleString() : kpi.value}</div>
+                `;
+                kpiContainer.appendChild(card);
+            });
+        }
+
+        function renderCharts(data) {
+            const chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.innerHTML = '';
+
+            const metrics = data.data || [];
+
+            // Bar Chart - Leads by Source
+            const barChartDiv = document.createElement('div');
+            barChartDiv.className = 'chart-container';
+            barChartDiv.innerHTML = '<h3>Leads by Source</h3><canvas id="barChart"></canvas>';
+            chartsContainer.appendChild(barChartDiv);
+
+            const sources = metrics.map(m => m.source || m.channel || 'Unknown');
+            const leads = metrics.map(m => formatNumber(m.total_leads || 0));
+
+            new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: sources,
+                    datasets: [{
+                        label: 'Total Leads',
+                        data: leads,
+                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                        borderColor: 'rgb(102, 126, 234)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Radar Chart - Channel Performance
+            const radarChartDiv = document.createElement('div');
+            radarChartDiv.className = 'chart-container';
+            radarChartDiv.innerHTML = '<h3>Channel Performance</h3><canvas id="radarChart"></canvas>';
+            chartsContainer.appendChild(radarChartDiv);
+
+            const conversions = metrics.map(m => {
+                const total = formatNumber(m.total_leads || 0);
+                const sales = formatNumber(m.sales || 0);
+                return total > 0 ? (sales / total * 100) : 0;
+            });
+
+            new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: sources,
+                    datasets: [{
+                        label: 'Conversion Rate (%)',
+                        data: conversions,
+                        borderColor: 'rgb(102, 126, 234)',
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTable(data) {
+            const tableContainer = document.getElementById('tableContainer');
+            tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
+
+            const metrics = data.data || [];
+
+            if (metrics.length === 0) {
+                tableContainer.innerHTML += '<p style="color: #666; padding: 20px;">No data available for the selected date range.</p>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Source</th>
+                        <th>Campaign</th>
+                        <th>Total Leads</th>
+                        <th>New Leads</th>
+                        <th>Sales</th>
+                        <th>Spend</th>
+                        <th>Revenue</th>
+                        <th>Cost/Lead</th>
+                        <th>Conversion %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            `;
+
+            const tbody = table.querySelector('tbody');
+
+            metrics.forEach(metric => {
+                const totalLeads = formatNumber(metric.total_leads || 0);
+                const spend = formatNumber(metric.marketing_spend || 0);
+                const costPerLead = totalLeads > 0 ? spend / totalLeads : 0;
+                const conversionRate = totalLeads > 0 ? (formatNumber(metric.sales || 0) / totalLeads) * 100 : 0;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${metric.channel || 'N/A'}</td>
+                    <td>${metric.source || 'N/A'}</td>
+                    <td>${metric.campaign || 'N/A'}</td>
+                    <td>${totalLeads.toLocaleString()}</td>
+                    <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.sales || 0).toLocaleString()}</td>
+                    <td>${formatCurrency(spend)}</td>
+                    <td>${formatCurrency(metric.total_revenue || 0)}</td>
+                    <td>${formatCurrency(costPerLead)}</td>
+                    <td>${conversionRate.toFixed(2)}%</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            tableContainer.appendChild(table);
+        }
+
+        function showMessage(message, type) {
+            const container = document.getElementById('messageContainer');
+            container.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // Check authentication on page load
+        checkAuth();
+    </script>
+</body>
+</html>

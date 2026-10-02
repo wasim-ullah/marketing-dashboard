@@ -7,27 +7,46 @@ export default async function handler(req, res) {
   const { API_USERNAME, API_PASSWORD } = process.env;
 
   if (!API_USERNAME || !API_PASSWORD) {
-    return res.status(500).json({ error: 'API credentials not configured' });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'API credentials not configured in backend' 
+    });
   }
 
   try {
     const { dateFrom, dateTo } = req.body;
 
+    // Validate inputs
+    if (!dateFrom || !dateTo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields: dateFrom, dateTo' 
+      });
+    }
+
+    // Call BuyAnyInsurance API with stored credentials
     const response = await fetch('https://ext.buyanyinsurance.ae/api/marketing/dashboard', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${Buffer.from(`${API_USERNAME}:${API_PASSWORD}`).toString('base64')}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ dateFrom, dateTo })
+      body: JSON.stringify({ 
+        start_date: dateFrom, 
+        end_date: dateTo 
+      })
     });
 
     const data = await response.json();
-    
-    // Pass through the status code and data
+
+    // Pass through the status code and data from BuyAnyInsurance API
     res.status(response.status).json(data);
+
   } catch (error) {
     console.error('API Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 }
