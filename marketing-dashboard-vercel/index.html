@@ -676,7 +676,10 @@
                         <th>Campaign</th>
                         <th>Total Leads</th>
                         <th>New Leads</th>
+                        <th>Pending</th>
                         <th>Sales</th>
+                        <th>Lost</th>
+                        <th>Deleted</th>
                         <th>Spend</th>
                         <th>Revenue</th>
                         <th>Cost/Lead</th>
@@ -702,7 +705,10 @@
                     <td>${metric.campaign || 'N/A'}</td>
                     <td>${totalLeads.toLocaleString()}</td>
                     <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.pending_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.lost_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.deleted_leads || 0).toLocaleString()}</td>
                     <td>${formatCurrency(spend)}</td>
                     <td>${formatCurrency(metric.total_revenue || 0)}</td>
                     <td>${formatCurrency(costPerLead)}</td>
