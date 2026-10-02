@@ -249,7 +249,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         table thead {
@@ -258,14 +258,14 @@
         }
 
         table th {
-            padding: 15px;
+            padding: 12px;
             text-align: left;
             font-weight: 600;
             color: #333;
         }
 
         table td {
-            padding: 12px 15px;
+            padding: 10px 12px;
             border-bottom: 1px solid #eee;
         }
 
@@ -361,10 +361,9 @@
         const VALID_USERNAME = 'BuyAnyIns#2024@Analytics';
         const VALID_PASSWORD = 'K@m3l@h#Tr@ck1ng$Dashboard#Secure2024!';
 
-        // Format number helper - FIXED to handle string values with commas
+        // Format number helper - handles string values with commas
         function formatNumber(value) {
             if (typeof value === 'string') {
-                // Remove commas and convert to float
                 return parseFloat(value.replace(/,/g, ''));
             }
             return parseFloat(value) || 0;
@@ -379,12 +378,6 @@
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             }).format(num);
-        }
-
-        // Format percentage helper
-        function formatPercent(value) {
-            const num = formatNumber(value);
-            return (num * 100).toFixed(2) + '%';
         }
 
         // Login functionality
@@ -501,17 +494,34 @@
             }
         }
 
-        function renderDashboard(data) {
-            renderKPIs(data);
-            renderCharts(data);
-            renderTable(data);
+        // Transform API response to flat metrics array
+        function transformApiResponse(apiData) {
+            const sources = apiData.data?.sources || [];
+            const metrics = sources.map(source => ({
+                channel: source.channel,
+                source: source.utm_source,
+                campaign: source.utm_campaign,
+                language: source.language,
+                ...source.metrics
+            }));
+            return metrics;
         }
 
-        function renderKPIs(data) {
+        function renderDashboard(apiResponse) {
+            try {
+                const metrics = transformApiResponse(apiResponse);
+                renderKPIs(metrics);
+                renderCharts(metrics);
+                renderTable(metrics);
+            } catch (error) {
+                showMessage(`Error rendering dashboard: ${error.message}`, 'error');
+                console.error('Render error:', error);
+            }
+        }
+
+        function renderKPIs(metrics) {
             const kpiContainer = document.getElementById('kpiCards');
             kpiContainer.innerHTML = '';
-
-            const metrics = data.data || [];
 
             // Calculate aggregated KPIs
             let totalLeads = 0;
@@ -523,7 +533,7 @@
             metrics.forEach(metric => {
                 totalLeads += formatNumber(metric.total_leads || 0);
                 newLeads += formatNumber(metric.new_leads || 0);
-                totalSales += formatNumber(metric.sales || 0);
+                totalSales += formatNumber(metric.total_sales || 0);
                 totalSpend += formatNumber(metric.marketing_spend || 0);
                 totalRevenue += formatNumber(metric.total_revenue || 0);
             });
@@ -550,20 +560,38 @@
             });
         }
 
-        function renderCharts(data) {
+        function renderCharts(metrics) {
             const chartsContainer = document.getElementById('chartsContainer');
             chartsContainer.innerHTML = '';
 
-            const metrics = data.data || [];
+            // Group by source for charts
+            const bySource = {};
+            metrics.forEach(m => {
+                const source = m.source || 'Unknown';
+                if (!bySource[source]) {
+                    bySource[source] = {
+                        total_leads: 0,
+                        total_sales: 0,
+                        total_revenue: 0
+                    };
+                }
+                bySource[source].total_leads += formatNumber(m.total_leads || 0);
+                bySource[source].total_sales += formatNumber(m.total_sales || 0);
+                bySource[source].total_revenue += formatNumber(m.total_revenue || 0);
+            });
+
+            const sources = Object.keys(bySource);
+            const leads = sources.map(s => bySource[s].total_leads);
+            const conversions = sources.map(s => {
+                const total = bySource[s].total_leads;
+                return total > 0 ? (bySource[s].total_sales / total * 100) : 0;
+            });
 
             // Bar Chart - Leads by Source
             const barChartDiv = document.createElement('div');
             barChartDiv.className = 'chart-container';
             barChartDiv.innerHTML = '<h3>Leads by Source</h3><canvas id="barChart"></canvas>';
             chartsContainer.appendChild(barChartDiv);
-
-            const sources = metrics.map(m => m.source || m.channel || 'Unknown');
-            const leads = metrics.map(m => formatNumber(m.total_leads || 0));
 
             new Chart(document.getElementById('barChart'), {
                 type: 'bar',
@@ -599,17 +627,11 @@
                 }
             });
 
-            // Radar Chart - Channel Performance
+            // Radar Chart - Conversion Rate by Source
             const radarChartDiv = document.createElement('div');
             radarChartDiv.className = 'chart-container';
-            radarChartDiv.innerHTML = '<h3>Channel Performance</h3><canvas id="radarChart"></canvas>';
+            radarChartDiv.innerHTML = '<h3>Conversion Rate by Source (%)</h3><canvas id="radarChart"></canvas>';
             chartsContainer.appendChild(radarChartDiv);
-
-            const conversions = metrics.map(m => {
-                const total = formatNumber(m.total_leads || 0);
-                const sales = formatNumber(m.sales || 0);
-                return total > 0 ? (sales / total * 100) : 0;
-            });
 
             new Chart(document.getElementById('radarChart'), {
                 type: 'radar',
@@ -636,11 +658,9 @@
             });
         }
 
-        function renderTable(data) {
+        function renderTable(metrics) {
             const tableContainer = document.getElementById('tableContainer');
             tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
-
-            const metrics = data.data || [];
 
             if (metrics.length === 0) {
                 tableContainer.innerHTML += '<p style="color: #666; padding: 20px;">No data available for the selected date range.</p>';
@@ -673,7 +693,7 @@
                 const totalLeads = formatNumber(metric.total_leads || 0);
                 const spend = formatNumber(metric.marketing_spend || 0);
                 const costPerLead = totalLeads > 0 ? spend / totalLeads : 0;
-                const conversionRate = totalLeads > 0 ? (formatNumber(metric.sales || 0) / totalLeads) * 100 : 0;
+                const conversionRate = totalLeads > 0 ? (formatNumber(metric.total_sales || 0) / totalLeads) * 100 : 0;
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -682,7 +702,7 @@
                     <td>${metric.campaign || 'N/A'}</td>
                     <td>${totalLeads.toLocaleString()}</td>
                     <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
-                    <td>${formatNumber(metric.sales || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
                     <td>${formatCurrency(spend)}</td>
                     <td>${formatCurrency(metric.total_revenue || 0)}</td>
                     <td>${formatCurrency(costPerLead)}</td>
