@@ -525,6 +525,7 @@
 
             // Calculate aggregated KPIs
             let totalLeads = 0;
+            let deletedLeads = 0;
             let newLeads = 0;
             let totalSales = 0;
             let totalSpend = 0;
@@ -532,6 +533,7 @@
 
             metrics.forEach(metric => {
                 totalLeads += formatNumber(metric.total_leads || 0);
+                deletedLeads += formatNumber(metric.deleted_leads || 0);
                 newLeads += formatNumber(metric.new_leads || 0);
                 totalSales += formatNumber(metric.total_sales || 0);
                 totalSpend += formatNumber(metric.marketing_spend || 0);
@@ -541,7 +543,13 @@
             const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
 
             const kpis = [
-                { title: 'Total Leads', value: totalLeads, icon: '📊' },
+                {
+                    title: 'Total Leads',
+                    value: totalLeads,
+                    subvalue: deletedLeads,
+                    sublabel: 'Deleted',
+                    icon: '📊'
+                },
                 { title: 'New Leads', value: newLeads, icon: '✨' },
                 { title: 'Sales', value: totalSales, icon: '💰' },
                 { title: 'Marketing Spend', value: formatCurrency(totalSpend), icon: '💵' },
@@ -552,10 +560,21 @@
             kpis.forEach(kpi => {
                 const card = document.createElement('div');
                 card.className = 'kpi-card';
-                card.innerHTML = `
+                let cardContent = `
                     <h4>${kpi.icon} ${kpi.title}</h4>
                     <div class="value">${typeof kpi.value === 'number' ? kpi.value.toLocaleString() : kpi.value}</div>
                 `;
+
+                // Add sub-metric if it exists (for deleted leads)
+                if (kpi.subvalue !== undefined) {
+                    cardContent += `
+                        <div class="change" style="margin-top: 10px; font-size: 12px;">
+                            ${kpi.sublabel}: ${kpi.subvalue.toLocaleString()}
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = cardContent;
                 kpiContainer.appendChild(card);
             });
         }
