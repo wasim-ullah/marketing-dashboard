@@ -200,12 +200,22 @@
         .kpi-card .value {
             font-size: 32px;
             font-weight: bold;
+            margin-bottom: 8px;
         }
 
         .kpi-card .change {
             font-size: 12px;
             opacity: 0.8;
             margin-top: 5px;
+        }
+
+        .kpi-card .sub-metric {
+            font-size: 14px;
+            opacity: 1 !important;
+            color: white !important;
+            margin-top: 10px;
+            line-height: 1.5;
+            display: block;
         }
 
         .charts-grid {
@@ -568,7 +578,7 @@
                 // Add sub-metric if it exists (for deleted leads)
                 if (kpi.subvalue !== undefined) {
                     cardContent += `
-                        <div style="margin-top: 8px; font-size: 13px; opacity: 1; color: rgba(255,255,255,0.9);">
+                        <div class="sub-metric">
                             <strong>${kpi.sublabel}:</strong> ${kpi.subvalue.toLocaleString()}
                         </div>
                     `;
