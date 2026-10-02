@@ -369,12 +369,12 @@
             return parseFloat(value) || 0;
         }
 
-        // Format currency helper
+        // Format currency helper - AED (Dirhams)
         function formatCurrency(value) {
             const num = formatNumber(value);
-            return new Intl.NumberFormat('en-US', {
+            return new Intl.NumberFormat('ar-AE', {
                 style: 'currency',
-                currency: 'USD',
+                currency: 'AED',
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             }).format(num);
