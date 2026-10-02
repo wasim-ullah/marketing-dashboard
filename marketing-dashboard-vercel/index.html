@@ -568,8 +568,8 @@
                 // Add sub-metric if it exists (for deleted leads)
                 if (kpi.subvalue !== undefined) {
                     cardContent += `
-                        <div class="change" style="margin-top: 10px; font-size: 12px;">
-                            ${kpi.sublabel}: ${kpi.subvalue.toLocaleString()}
+                        <div style="margin-top: 8px; font-size: 13px; opacity: 1; color: rgba(255,255,255,0.9);">
+                            <strong>${kpi.sublabel}:</strong> ${kpi.subvalue.toLocaleString()}
                         </div>
                     `;
                 }
