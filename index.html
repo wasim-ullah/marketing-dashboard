@@ -3,37 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BuyAnyInsurance - Ad Spend Dashboard</title>
+  <title>BuyAnyInsurance - Marketing Dashboard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; color: #333; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    header { background: white; padding: 20px 0; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h1 { font-size: 28px; margin-bottom: 20px; }
-    .date-range { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
-    input[type="date"] { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-    button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-    button:hover { background: #0056b3; }
-    .ads-section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
-    .ads-header { font-size: 18px; font-weight: bold; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
-    .ads-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-    .ads-card { background: #f9f9f9; padding: 20px; border-radius: 6px; border-left: 4px solid #007bff; }
-    .ads-platform { font-size: 13px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .ads-spend { font-size: 28px; font-weight: bold; color: #333; margin-bottom: 8px; }
-    .ads-percentage { font-size: 13px; color: #999; }
-    .error-message { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #f5c6cb; }
-    .success-message { background: #d4edda; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #c3e6cb; }
-    .campaign-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    .campaign-table th { background: #f5f5f5; padding: 12px; text-align: left; font-size: 13px; font-weight: 600; border-bottom: 2px solid #ddd; }
-    .campaign-table td { padding: 12px; border-bottom: 1px solid #eee; }
-    .campaign-table tr:hover { background: #f9f9f9; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    header { background: white; padding: 25px 0; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { font-size: 32px; margin-bottom: 20px; }
+    .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+    input[type="date"] { padding: 10px 15px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+    button { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #2980b9; }
+    .section { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
+    .section-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+    .metric-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }
+    .metric-label { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin-bottom: 8px; }
+    .metric-value { font-size: 28px; font-weight: 700; }
+    .metric-sub { font-size: 12px; opacity: 0.8; margin-top: 5px; }
+    .error-message { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #f5c6cb; display: none; }
+    .error-message.show { display: block; }
+    .success-message { background: #d4edda; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #c3e6cb; display: none; }
+    .success-message.show { display: block; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    .table th { background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
+    .table td { padding: 12px; border-bottom: 1px solid #eee; }
+    .table tr:hover { background: #f9f9f9; }
   </style>
 </head>
 <body>
   <header>
     <div class="container">
-      <h1>💰 BuyAnyInsurance - Ad Spend Dashboard 🔴 Facebook Ads Live</h1>
-      <div class="date-range">
+      <h1>💼 BuyAnyInsurance - Marketing Dashboard</h1>
+      <div class="controls">
         <label>Start Date:</label>
         <input type="date" id="startDate">
         <label>End Date:</label>
@@ -44,48 +46,75 @@
   </header>
 
   <div class="container">
-    <div class="ads-section">
-      <div class="ads-header">💰 Ad Spend Overview</div>
-      <div id="adErrors"></div>
-      <div id="adSuccess"></div>
-      
-      <div class="ads-grid">
-        <div class="ads-card">
-          <div class="ads-platform">Facebook Ads</div>
-          <div class="ads-spend" id="fbSpend">$0.00</div>
-          <div class="ads-percentage" id="fbPercentage">0%</div>
+    <!-- KPI Section -->
+    <div class="section">
+      <div class="section-title">📊 Key Performance Indicators</div>
+      <div id="kpiError" class="error-message"></div>
+      <div id="kpiSuccess" class="success-message"></div>
+      <div class="metrics-grid" id="kpiMetrics">
+        <div class="metric-card">
+          <div class="metric-label">Total Leads</div>
+          <div class="metric-value" id="totalLeads">-</div>
         </div>
-        <div class="ads-card">
-          <div class="ads-platform">Google Ads</div>
-          <div class="ads-spend" id="googleSpend">$0.00</div>
-          <div class="ads-percentage" id="googlePercentage">0%</div>
+        <div class="metric-card">
+          <div class="metric-label">Qualified Leads</div>
+          <div class="metric-value" id="qualifiedLeads">-</div>
         </div>
-        <div class="ads-card">
-          <div class="ads-platform">Bing Ads</div>
-          <div class="ads-spend" id="bingSpend">$0.00</div>
-          <div class="ads-percentage" id="bingPercentage">0%</div>
+        <div class="metric-card">
+          <div class="metric-label">Conversions</div>
+          <div class="metric-value" id="totalConversions">-</div>
         </div>
-        <div class="ads-card" style="border-left-color: #28a745;">
-          <div class="ads-platform">Total Spend</div>
-          <div class="ads-spend" id="totalSpend">$0.00</div>
-          <div class="ads-percentage">All Platforms</div>
+        <div class="metric-card">
+          <div class="metric-label">Revenue (AED)</div>
+          <div class="metric-value" id="totalRevenue">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Facebook Ads Spend Section -->
+    <div class="section">
+      <div class="section-title">💰 Facebook Ad Spend</div>
+      <div id="adsError" class="error-message"></div>
+      <div id="adsSuccess" class="success-message"></div>
+      <div class="metrics-grid">
+        <div class="metric-card" style="background: linear-gradient(135deg, #1877f2 0%, #0a66c2 100%);">
+          <div class="metric-label">Facebook Spend</div>
+          <div class="metric-value" id="fbSpend">$0.00</div>
+          <div class="metric-sub" id="fbPercentage">0%</div>
+        </div>
+        <div class="metric-card" style="background: linear-gradient(135deg, #4285f4 0%, #1a73e8 100%);">
+          <div class="metric-label">Google Spend</div>
+          <div class="metric-value" id="googleSpend">$0.00</div>
+          <div class="metric-sub" id="googlePercentage">0%</div>
+        </div>
+        <div class="metric-card" style="background: linear-gradient(135deg, #00a4ef 0%, #0078d4 100%);">
+          <div class="metric-label">Bing Spend</div>
+          <div class="metric-value" id="bingSpend">$0.00</div>
+          <div class="metric-sub" id="bingPercentage">0%</div>
+        </div>
+        <div class="metric-card" style="background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);">
+          <div class="metric-label">Total Spend</div>
+          <div class="metric-value" id="totalSpend">$0.00</div>
+          <div class="metric-sub">All Platforms</div>
         </div>
       </div>
 
-      <h3 style="margin-top: 30px; margin-bottom: 15px;">Facebook Campaigns Breakdown</h3>
-      <table class="campaign-table">
-        <thead>
-          <tr>
-            <th>Campaign Name</th>
-            <th>Spend (AED)</th>
-            <th>Clicks</th>
-            <th>Impressions</th>
-          </tr>
-        </thead>
-        <tbody id="campaignsBody">
-          <tr><td colspan="4" style="text-align: center; color: #999;">Loading campaigns...</td></tr>
-        </tbody>
-      </table>
+      <div style="margin-top: 25px;">
+        <h3 style="font-size: 16px; margin-bottom: 15px;">Facebook Campaigns</h3>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Campaign Name</th>
+              <th>Spend (AED)</th>
+              <th>Clicks</th>
+              <th>Impressions</th>
+            </tr>
+          </thead>
+          <tbody id="campaignsBody">
+            <tr><td colspan="4" style="text-align: center; color: #999;">Load data to see campaigns...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -101,55 +130,94 @@
     async function loadDashboard() {
       const startDate = document.getElementById('startDate').value;
       const endDate = document.getElementById('endDate').value;
+      
+      document.getElementById('kpiError').classList.remove('show');
+      document.getElementById('adsError').classList.remove('show');
+      document.getElementById('kpiSuccess').classList.remove('show');
+      document.getElementById('adsSuccess').classList.remove('show');
+
+      loadKPIData(startDate, endDate);
+      loadAdsData(startDate, endDate);
+    }
+
+    async function loadKPIData(startDate, endDate) {
       try {
-        document.getElementById('adErrors').innerHTML = '';
-        document.getElementById('adSuccess').innerHTML = '';
-        const adsResponse = await fetch('/api/fetch-ads-spend', {
+        const response = await fetch('/api/fetch-dashboard', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ startDate, endDate }),
+          body: JSON.stringify({ dateFrom: startDate, dateTo: endDate })
         });
-        if (!adsResponse.ok) throw new Error(`API error: ${adsResponse.status}`);
-        const adsData = await adsResponse.json();
-        if (!adsData.data) throw new Error('No data returned from API');
+
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
+        const data = await response.json();
         
-        const spend = adsData.data.spend;
-        const summary = adsData.data.summary;
-        document.getElementById('fbSpend').textContent = `$${(spend.facebook || 0).toFixed(2)}`;
-        document.getElementById('googleSpend').textContent = `$${(spend.google || 0).toFixed(2)}`;
-        document.getElementById('bingSpend').textContent = `$${(spend.bing || 0).toFixed(2)}`;
-        document.getElementById('totalSpend').textContent = `$${(spend.total || 0).toFixed(2)}`;
-        document.getElementById('fbPercentage').textContent = `${summary.facebookPercentage}%`;
-        document.getElementById('googlePercentage').textContent = `${summary.googlePercentage}%`;
-        document.getElementById('bingPercentage').textContent = `${summary.bingPercentage}%`;
-        
-        if (spend.facebook > 0) {
-          document.getElementById('adSuccess').innerHTML = '<div class="success-message">✓ Facebook Ads data loaded successfully!</div>';
-        }
-        const errors = adsData.data.errors;
-        if (errors && (errors.google || errors.bing)) {
-          let errorMsg = '<div class="error-message">';
-          if (errors.google) errorMsg += `<strong>Google Ads:</strong> ${errors.google}<br>`;
-          if (errors.bing) errorMsg += `<strong>Bing Ads:</strong> ${errors.bing}`;
-          errorMsg += '</div>';
-          document.getElementById('adErrors').innerHTML = errorMsg;
-        }
-        
-        const campaigns = adsData.data.campaigns.facebook_campaigns || {};
-        const tbody = document.getElementById('campaignsBody');
-        if (Object.keys(campaigns).length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No campaigns found</td></tr>';
+        if (data.success && data.data) {
+          const m = data.data;
+          document.getElementById('totalLeads').textContent = (m.total_leads || 0).toLocaleString();
+          document.getElementById('qualifiedLeads').textContent = (m.qualified_leads || 0).toLocaleString();
+          document.getElementById('totalConversions').textContent = (m.total_conversions || 0).toLocaleString();
+          document.getElementById('totalRevenue').textContent = (m.total_revenue || 0).toLocaleString();
+          
+          document.getElementById('kpiSuccess').textContent = '✓ KPI data loaded!';
+          document.getElementById('kpiSuccess').classList.add('show');
         } else {
-          tbody.innerHTML = Object.entries(campaigns).map(([name, data]) => `
-            <tr><td>${name}</td><td>AED ${data.spend.toFixed(2)}</td><td>${data.clicks.toLocaleString()}</td><td>${data.impressions.toLocaleString()}</td></tr>
-          `).join('');
+          throw new Error(data.message || 'No data');
         }
       } catch (error) {
-        document.getElementById('adErrors').innerHTML = `<div class="error-message"><strong>Error:</strong> ${error.message}</div>`;
+        document.getElementById('kpiError').textContent = `Error: ${error.message}`;
+        document.getElementById('kpiError').classList.add('show');
       }
     }
+
+    async function loadAdsData(startDate, endDate) {
+      try {
+        const response = await fetch('/api/fetch-ads-spend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate, endDate })
+        });
+
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
+        const data = await response.json();
+        
+        if (data.data) {
+          const spend = data.data.spend;
+          const summary = data.data.summary;
+          
+          document.getElementById('fbSpend').textContent = `$${(spend.facebook || 0).toFixed(2)}`;
+          document.getElementById('googleSpend').textContent = `$${(spend.google || 0).toFixed(2)}`;
+          document.getElementById('bingSpend').textContent = `$${(spend.bing || 0).toFixed(2)}`;
+          document.getElementById('totalSpend').textContent = `$${(spend.total || 0).toFixed(2)}`;
+          
+          document.getElementById('fbPercentage').textContent = `${summary.facebookPercentage}%`;
+          document.getElementById('googlePercentage').textContent = `${summary.googlePercentage}%`;
+          document.getElementById('bingPercentage').textContent = `${summary.bingPercentage}%`;
+          
+          if (spend.facebook > 0) {
+            document.getElementById('adsSuccess').textContent = '✓ Facebook Ads data loaded!';
+            document.getElementById('adsSuccess').classList.add('show');
+          }
+          
+          const campaigns = data.data.campaigns.facebook_campaigns || {};
+          const tbody = document.getElementById('campaignsBody');
+          
+          if (Object.keys(campaigns).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No campaigns found</td></tr>';
+          } else {
+            tbody.innerHTML = Object.entries(campaigns).map(([name, d]) => `
+              <tr><td>${name}</td><td>AED ${d.spend.toFixed(2)}</td><td>${d.clicks.toLocaleString()}</td><td>${d.impressions.toLocaleString()}</td></tr>
+            `).join('');
+          }
+        } else {
+          throw new Error('No ads data');
+        }
+      } catch (error) {
+        document.getElementById('adsError').textContent = `Error: ${error.message}`;
+        document.getElementById('adsError').classList.add('show');
+      }
+    }
+
     setInterval(loadDashboard, 5 * 60 * 1000);
   </script>
 </body>
 </html>
-/* Deployment trigger */
