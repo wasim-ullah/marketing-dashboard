@@ -1,14 +1,4 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/marketing-dashboard-vercel/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/marketing-dashboard-vercel/index.html"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
