@@ -1,223 +1,833 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BuyAnyInsurance - Marketing Dashboard</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; color: #333; }
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-    header { background: white; padding: 25px 0; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    h1 { font-size: 32px; margin-bottom: 20px; }
-    .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-    input[type="date"] { padding: 10px 15px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-    button { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
-    button:hover { background: #2980b9; }
-    .section { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
-    .section-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
-    .metric-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }
-    .metric-label { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin-bottom: 8px; }
-    .metric-value { font-size: 28px; font-weight: 700; }
-    .metric-sub { font-size: 12px; opacity: 0.8; margin-top: 5px; }
-    .error-message { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #f5c6cb; display: none; }
-    .error-message.show { display: block; }
-    .success-message { background: #d4edda; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #c3e6cb; display: none; }
-    .success-message.show { display: block; }
-    .table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    .table th { background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
-    .table td { padding: 12px; border-bottom: 1px solid #eee; }
-    .table tr:hover { background: #f9f9f9; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Performance Dashboard - BuyAnyInsurance</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            display: none;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-container.active {
+            display: block;
+        }
+
+        .login-container h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 24px;
+        }
+
+        .login-container .form-group {
+            margin-bottom: 20px;
+        }
+
+        .login-container label {
+            display: block;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .login-container input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .login-container input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-container button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .login-container button:hover {
+            transform: translateY(-2px);
+        }
+
+        .dashboard-container {
+            display: none;
+            width: 100%;
+            background: white;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        .dashboard-container.active {
+            display: block;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .logout-btn {
+            padding: 10px 20px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: #c0392b;
+        }
+
+        .date-selector {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .date-selector h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .date-controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .preset-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .preset-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .preset-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .date-input {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 12px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .kpi-card h4 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .kpi-card .change {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .kpi-card .sub-metric {
+            font-size: 14px;
+            opacity: 1 !important;
+            color: white !important;
+            margin-top: 10px;
+            line-height: 1.5;
+            display: block;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .chart-container h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        canvas {
+            max-height: 350px;
+        }
+
+        .table-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            overflow-x: auto;
+        }
+
+        .table-container h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        table thead {
+            background: #f8f9fa;
+            border-bottom: 2px solid #ddd;
+        }
+
+        table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .date-controls {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-  <header>
-    <div class="container">
-      <h1>💼 BuyAnyInsurance - Marketing Dashboard</h1>
-      <div class="controls">
-        <label>Start Date:</label>
-        <input type="date" id="startDate">
-        <label>End Date:</label>
-        <input type="date" id="endDate">
-        <button onclick="loadDashboard()">Load Data</button>
-      </div>
-    </div>
-  </header>
-
-  <div class="container">
-    <!-- KPI Section -->
-    <div class="section">
-      <div class="section-title">📊 Key Performance Indicators</div>
-      <div id="kpiError" class="error-message"></div>
-      <div id="kpiSuccess" class="success-message"></div>
-      <div class="metrics-grid" id="kpiMetrics">
-        <div class="metric-card">
-          <div class="metric-label">Total Leads</div>
-          <div class="metric-value" id="totalLeads">-</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Qualified Leads</div>
-          <div class="metric-value" id="qualifiedLeads">-</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Conversions</div>
-          <div class="metric-value" id="totalConversions">-</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Revenue (AED)</div>
-          <div class="metric-value" id="totalRevenue">-</div>
-        </div>
-      </div>
+    <!-- Login Screen -->
+    <div class="login-container active" id="loginContainer">
+        <h1>Marketing Dashboard</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" placeholder="Enter username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter password" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
     </div>
 
-    <!-- Facebook Ads Spend Section -->
-    <div class="section">
-      <div class="section-title">💰 Facebook Ad Spend</div>
-      <div id="adsError" class="error-message"></div>
-      <div id="adsSuccess" class="success-message"></div>
-      <div class="metrics-grid">
-        <div class="metric-card" style="background: linear-gradient(135deg, #1877f2 0%, #0a66c2 100%);">
-          <div class="metric-label">Facebook Spend</div>
-          <div class="metric-value" id="fbSpend">$0.00</div>
-          <div class="metric-sub" id="fbPercentage">0%</div>
+    <!-- Dashboard Screen -->
+    <div class="dashboard-container" id="dashboardContainer">
+        <div class="header">
+            <h1>Marketing Performance Dashboard</h1>
+            <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
-        <div class="metric-card" style="background: linear-gradient(135deg, #4285f4 0%, #1a73e8 100%);">
-          <div class="metric-label">Google Spend</div>
-          <div class="metric-value" id="googleSpend">$0.00</div>
-          <div class="metric-sub" id="googlePercentage">0%</div>
-        </div>
-        <div class="metric-card" style="background: linear-gradient(135deg, #00a4ef 0%, #0078d4 100%);">
-          <div class="metric-label">Bing Spend</div>
-          <div class="metric-value" id="bingSpend">$0.00</div>
-          <div class="metric-sub" id="bingPercentage">0%</div>
-        </div>
-        <div class="metric-card" style="background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);">
-          <div class="metric-label">Total Spend</div>
-          <div class="metric-value" id="totalSpend">$0.00</div>
-          <div class="metric-sub">All Platforms</div>
-        </div>
-      </div>
 
-      <div style="margin-top: 25px;">
-        <h3 style="font-size: 16px; margin-bottom: 15px;">Facebook Campaigns</h3>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Campaign Name</th>
-              <th>Spend (AED)</th>
-              <th>Clicks</th>
-              <th>Impressions</th>
-            </tr>
-          </thead>
-          <tbody id="campaignsBody">
-            <tr><td colspan="4" style="text-align: center; color: #999;">Load data to see campaigns...</td></tr>
-          </tbody>
-        </table>
-      </div>
+        <div id="messageContainer"></div>
+
+        <div class="date-selector">
+            <h3>Select Date Range</h3>
+            <div class="date-controls">
+                <button class="preset-btn active" onclick="setDateRange(7)">Last 7 Days</button>
+                <button class="preset-btn" onclick="setDateRange(30)">Last 30 Days</button>
+                <button class="preset-btn" onclick="setDateRange(90)">Last 90 Days</button>
+                <span style="color: #666; font-weight: 500;">Or select custom range:</span>
+                <input type="date" id="dateFrom" class="date-input" onchange="loadDashboard()">
+                <input type="date" id="dateTo" class="date-input" onchange="loadDashboard()">
+            </div>
+        </div>
+
+        <div id="kpiCards" class="kpi-grid"></div>
+        <div id="chartsContainer" class="charts-grid"></div>
+        <div id="tableContainer" class="table-container"></div>
+
+        <div class="table-container" id="fbAdsSection">
+            <h3>Facebook Ad Spend</h3>
+            <div id="fbAdsMessage"></div>
+            <div id="fbKpiCards" class="kpi-grid"></div>
+            <div id="fbCampaignsTable"></div>
+        </div>
     </div>
-  </div>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const endDate = new Date();
-      const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-      document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
-      document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
-      loadDashboard();
-    });
+    <script>
+        // Credentials
+        const VALID_USERNAME = 'BuyAnyIns#2024@Analytics';
+        const VALID_PASSWORD = 'K@m3l@h#Tr@ck1ng$Dashboard#Secure2024!';
 
-    async function loadDashboard() {
-      const startDate = document.getElementById('startDate').value;
-      const endDate = document.getElementById('endDate').value;
-      
-      document.getElementById('kpiError').classList.remove('show');
-      document.getElementById('adsError').classList.remove('show');
-      document.getElementById('kpiSuccess').classList.remove('show');
-      document.getElementById('adsSuccess').classList.remove('show');
+        // Format number helper - handles string values with commas
+        function formatNumber(value) {
+            if (typeof value === 'string') {
+                return parseFloat(value.replace(/,/g, ''));
+            }
+            return parseFloat(value) || 0;
+        }
 
-      loadKPIData(startDate, endDate);
-      loadAdsData(startDate, endDate);
-    }
+        // Format currency helper - AED (Dirhams)
+        function formatCurrency(value) {
+            const num = formatNumber(value);
+            return 'Dhs ' + new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }).format(num || 0);
+        }
 
-    async function loadKPIData(startDate, endDate) {
-      try {
-        const response = await fetch('/api/fetch-dashboard', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dateFrom: startDate, dateTo: endDate })
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+                sessionStorage.setItem('authenticated', 'true');
+                document.getElementById('loginContainer').classList.remove('active');
+                document.getElementById('dashboardContainer').classList.add('active');
+                initializeDashboard();
+            } else {
+                alert('Invalid credentials. Please try again.');
+            }
         });
 
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        const data = await response.json();
-        
-        if (data.success && data.data) {
-          const m = data.data;
-          document.getElementById('totalLeads').textContent = (m.total_leads || 0).toLocaleString();
-          document.getElementById('qualifiedLeads').textContent = (m.qualified_leads || 0).toLocaleString();
-          document.getElementById('totalConversions').textContent = (m.total_conversions || 0).toLocaleString();
-          document.getElementById('totalRevenue').textContent = (m.total_revenue || 0).toLocaleString();
-          
-          document.getElementById('kpiSuccess').textContent = '✓ KPI data loaded!';
-          document.getElementById('kpiSuccess').classList.add('show');
-        } else {
-          throw new Error(data.message || 'No data');
+        function logout() {
+            sessionStorage.removeItem('authenticated');
+            document.getElementById('dashboardContainer').classList.remove('active');
+            document.getElementById('loginContainer').classList.add('active');
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
         }
-      } catch (error) {
-        document.getElementById('kpiError').textContent = `Error: ${error.message}`;
-        document.getElementById('kpiError').classList.add('show');
-      }
-    }
 
-    async function loadAdsData(startDate, endDate) {
-      try {
-        const response = await fetch('/api/fetch-ads-spend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ startDate, endDate })
-        });
-
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        const data = await response.json();
-        
-        if (data.data) {
-          const spend = data.data.spend;
-          const summary = data.data.summary;
-          
-          document.getElementById('fbSpend').textContent = `$${(spend.facebook || 0).toFixed(2)}`;
-          document.getElementById('googleSpend').textContent = `$${(spend.google || 0).toFixed(2)}`;
-          document.getElementById('bingSpend').textContent = `$${(spend.bing || 0).toFixed(2)}`;
-          document.getElementById('totalSpend').textContent = `$${(spend.total || 0).toFixed(2)}`;
-          
-          document.getElementById('fbPercentage').textContent = `${summary.facebookPercentage}%`;
-          document.getElementById('googlePercentage').textContent = `${summary.googlePercentage}%`;
-          document.getElementById('bingPercentage').textContent = `${summary.bingPercentage}%`;
-          
-          if (spend.facebook > 0) {
-            document.getElementById('adsSuccess').textContent = '✓ Facebook Ads data loaded!';
-            document.getElementById('adsSuccess').classList.add('show');
-          }
-          
-          const campaigns = data.data.campaigns.facebook_campaigns || {};
-          const tbody = document.getElementById('campaignsBody');
-          
-          if (Object.keys(campaigns).length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No campaigns found</td></tr>';
-          } else {
-            tbody.innerHTML = Object.entries(campaigns).map(([name, d]) => `
-              <tr><td>${name}</td><td>AED ${d.spend.toFixed(2)}</td><td>${d.clicks.toLocaleString()}</td><td>${d.impressions.toLocaleString()}</td></tr>
-            `).join('');
-          }
-        } else {
-          throw new Error('No ads data');
+        // Check if user is authenticated
+        function checkAuth() {
+            const isAuthenticated = sessionStorage.getItem('authenticated');
+            if (!isAuthenticated) {
+                document.getElementById('loginContainer').classList.add('active');
+                document.getElementById('dashboardContainer').classList.remove('active');
+            } else {
+                document.getElementById('loginContainer').classList.remove('active');
+                document.getElementById('dashboardContainer').classList.add('active');
+                initializeDashboard();
+            }
         }
-      } catch (error) {
-        document.getElementById('adsError').textContent = `Error: ${error.message}`;
-        document.getElementById('adsError').classList.add('show');
-      }
-    }
 
-    setInterval(loadDashboard, 5 * 60 * 1000);
-  </script>
+        // Initialize dashboard
+        function initializeDashboard() {
+            // Set default date range (last 7 days)
+            const today = new Date();
+            const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+            document.getElementById('dateTo').value = formatDate(today);
+            document.getElementById('dateFrom').value = formatDate(sevenDaysAgo);
+
+            loadDashboard();
+
+            // Auto-refresh every 5 minutes
+            setInterval(loadDashboard, 5 * 60 * 1000);
+        }
+
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function setDateRange(days) {
+            const today = new Date();
+            const startDate = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+
+            document.getElementById('dateTo').value = formatDate(today);
+            document.getElementById('dateFrom').value = formatDate(startDate);
+
+            // Update active button
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+
+            if (!dateFrom || !dateTo) {
+                showMessage('Please select both start and end dates', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/fetch-dashboard', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dateFrom: dateFrom,
+                        dateTo: dateTo
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showMessage(`Error: ${data.error}`, 'error');
+                    return;
+                }
+
+                renderDashboard(data);
+                showMessage('Dashboard updated successfully', 'success');
+            } catch (error) {
+                showMessage(`Failed to fetch dashboard: ${error.message}`, 'error');
+                console.error('Error:', error);
+            }
+
+            loadFacebookAds(dateFrom, dateTo);
+        }
+
+        // Facebook Ads spend (already converted to AED by the backend)
+        async function loadFacebookAds(startDate, endDate) {
+            const msg = document.getElementById('fbAdsMessage');
+            const cards = document.getElementById('fbKpiCards');
+            const tableDiv = document.getElementById('fbCampaignsTable');
+            msg.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/fetch-ads-spend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startDate, endDate })
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                if (!data.data) throw new Error('No ads data returned');
+
+                if (data.data.errors && data.data.errors.facebook) {
+                    msg.innerHTML = `<div class="error">Facebook: ${data.data.errors.facebook}</div>`;
+                }
+
+                const campaigns = data.data.campaigns.facebook_campaigns || {};
+                let clicks = 0, impressions = 0;
+                Object.values(campaigns).forEach(c => { clicks += c.clicks; impressions += c.impressions; });
+                const spend = data.data.spend.facebook || 0;
+
+                const fbKpis = [
+                    { title: '📘 Facebook Spend', value: formatCurrency(spend) },
+                    { title: '🖱️ Clicks', value: clicks.toLocaleString() },
+                    { title: '👁️ Impressions', value: impressions.toLocaleString() },
+                    { title: '💲 Cost per Click', value: formatCurrency(clicks > 0 ? spend / clicks : 0) }
+                ];
+                cards.innerHTML = fbKpis.map(k =>
+                    `<div class="kpi-card"><h4>${k.title}</h4><div class="value">${k.value}</div></div>`
+                ).join('');
+
+                const rows = Object.entries(campaigns).sort((a, b) => b[1].spend - a[1].spend);
+                if (rows.length === 0) {
+                    tableDiv.innerHTML = '<p style="color: #666; padding: 20px;">No Facebook campaigns with spend in this date range.</p>';
+                    return;
+                }
+                tableDiv.innerHTML = `
+                    <table>
+                        <thead><tr><th>Campaign</th><th>Spend</th><th>Clicks</th><th>Impressions</th><th>CPC</th></tr></thead>
+                        <tbody>
+                            ${rows.map(([name, c]) => `
+                                <tr>
+                                    <td>${name}</td>
+                                    <td>${formatCurrency(c.spend)}</td>
+                                    <td>${c.clicks.toLocaleString()}</td>
+                                    <td>${c.impressions.toLocaleString()}</td>
+                                    <td>${formatCurrency(c.clicks > 0 ? c.spend / c.clicks : 0)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (error) {
+                msg.innerHTML = `<div class="error">Failed to load Facebook ads: ${error.message}</div>`;
+                console.error('FB Ads error:', error);
+            }
+        }
+
+        // Transform API response to flat metrics array
+        function transformApiResponse(apiData) {
+            const sources = apiData.data?.sources || [];
+            const metrics = sources.map(source => ({
+                channel: source.channel,
+                source: source.utm_source,
+                campaign: source.utm_campaign,
+                language: source.language,
+                ...source.metrics
+            }));
+            return metrics;
+        }
+
+        function renderDashboard(apiResponse) {
+            try {
+                const metrics = transformApiResponse(apiResponse);
+                renderKPIs(metrics);
+                renderCharts(metrics);
+                renderTable(metrics);
+            } catch (error) {
+                showMessage(`Error rendering dashboard: ${error.message}`, 'error');
+                console.error('Render error:', error);
+            }
+        }
+
+        function renderKPIs(metrics) {
+            const kpiContainer = document.getElementById('kpiCards');
+            kpiContainer.innerHTML = '';
+
+            // Calculate aggregated KPIs
+            let totalLeads = 0;
+            let deletedLeads = 0;
+            let newLeads = 0;
+            let totalSales = 0;
+            let totalSpend = 0;
+            let totalRevenue = 0;
+
+            metrics.forEach(metric => {
+                totalLeads += formatNumber(metric.total_leads || 0);
+                deletedLeads += formatNumber(metric.deleted_leads || 0);
+                newLeads += formatNumber(metric.new_leads || 0);
+                totalSales += formatNumber(metric.total_sales || 0);
+                totalSpend += formatNumber(metric.marketing_spend || 0);
+                totalRevenue += formatNumber(metric.total_revenue || 0);
+            });
+
+            const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
+
+            const kpis = [
+                {
+                    title: 'Total Leads',
+                    value: totalLeads,
+                    subvalue: deletedLeads,
+                    sublabel: 'Deleted',
+                    icon: '📊'
+                },
+                { title: 'New Leads', value: newLeads, icon: '✨' },
+                { title: 'Sales', value: totalSales, icon: '💰' },
+                { title: 'Marketing Spend', value: formatCurrency(totalSpend), icon: '💵' },
+                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '📈' },
+                { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: '🎯' }
+            ];
+
+            kpis.forEach(kpi => {
+                const card = document.createElement('div');
+                card.className = 'kpi-card';
+                let cardContent = `
+                    <h4>${kpi.icon} ${kpi.title}</h4>
+                    <div class="value">${typeof kpi.value === 'number' ? kpi.value.toLocaleString() : kpi.value}</div>
+                `;
+
+                // Add sub-metric if it exists (for deleted leads)
+                if (kpi.subvalue !== undefined) {
+                    cardContent += `
+                        <div class="sub-metric">
+                            <strong>${kpi.sublabel}:</strong> ${kpi.subvalue.toLocaleString()}
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = cardContent;
+                kpiContainer.appendChild(card);
+            });
+        }
+
+        function renderCharts(metrics) {
+            const chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.innerHTML = '';
+
+            // Group by source for charts
+            const bySource = {};
+            metrics.forEach(m => {
+                const source = m.source || 'Unknown';
+                if (!bySource[source]) {
+                    bySource[source] = {
+                        total_leads: 0,
+                        total_sales: 0,
+                        total_revenue: 0
+                    };
+                }
+                bySource[source].total_leads += formatNumber(m.total_leads || 0);
+                bySource[source].total_sales += formatNumber(m.total_sales || 0);
+                bySource[source].total_revenue += formatNumber(m.total_revenue || 0);
+            });
+
+            const sources = Object.keys(bySource);
+            const leads = sources.map(s => bySource[s].total_leads);
+            const conversions = sources.map(s => {
+                const total = bySource[s].total_leads;
+                return total > 0 ? (bySource[s].total_sales / total * 100) : 0;
+            });
+
+            // Bar Chart - Leads by Source
+            const barChartDiv = document.createElement('div');
+            barChartDiv.className = 'chart-container';
+            barChartDiv.innerHTML = '<h3>Leads by Source</h3><canvas id="barChart"></canvas>';
+            chartsContainer.appendChild(barChartDiv);
+
+            new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: sources,
+                    datasets: [{
+                        label: 'Total Leads',
+                        data: leads,
+                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                        borderColor: 'rgb(102, 126, 234)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Radar Chart - Conversion Rate by Source
+            const radarChartDiv = document.createElement('div');
+            radarChartDiv.className = 'chart-container';
+            radarChartDiv.innerHTML = '<h3>Conversion Rate by Source (%)</h3><canvas id="radarChart"></canvas>';
+            chartsContainer.appendChild(radarChartDiv);
+
+            new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: sources,
+                    datasets: [{
+                        label: 'Conversion Rate (%)',
+                        data: conversions,
+                        borderColor: 'rgb(102, 126, 234)',
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTable(metrics) {
+            const tableContainer = document.getElementById('tableContainer');
+            tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
+
+            if (metrics.length === 0) {
+                tableContainer.innerHTML += '<p style="color: #666; padding: 20px;">No data available for the selected date range.</p>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Source</th>
+                        <th>Campaign</th>
+                        <th>Total Leads</th>
+                        <th>New Leads</th>
+                        <th>Pending</th>
+                        <th>Sales</th>
+                        <th>Lost</th>
+                        <th>Deleted</th>
+                        <th>Spend</th>
+                        <th>Revenue</th>
+                        <th>Cost/Lead</th>
+                        <th>Conversion %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            `;
+
+            const tbody = table.querySelector('tbody');
+
+            metrics.forEach(metric => {
+                const totalLeads = formatNumber(metric.total_leads || 0);
+                const spend = formatNumber(metric.marketing_spend || 0);
+                const costPerLead = totalLeads > 0 ? spend / totalLeads : 0;
+                const conversionRate = totalLeads > 0 ? (formatNumber(metric.total_sales || 0) / totalLeads) * 100 : 0;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${metric.channel || 'N/A'}</td>
+                    <td>${metric.source || 'N/A'}</td>
+                    <td>${metric.campaign || 'N/A'}</td>
+                    <td>${totalLeads.toLocaleString()}</td>
+                    <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.pending_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.lost_leads || 0).toLocaleString()}</td>
+                    <td>${formatNumber(metric.deleted_leads || 0).toLocaleString()}</td>
+                    <td>${formatCurrency(spend)}</td>
+                    <td>${formatCurrency(metric.total_revenue || 0)}</td>
+                    <td>${formatCurrency(costPerLead)}</td>
+                    <td>${conversionRate.toFixed(2)}%</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            tableContainer.appendChild(table);
+        }
+
+        function showMessage(message, type) {
+            const container = document.getElementById('messageContainer');
+            container.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // Check authentication on page load
+        checkAuth();
+    </script>
 </body>
 </html>
