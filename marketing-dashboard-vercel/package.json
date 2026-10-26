@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vercel dev",
-    "build": "vercel build"
+    "build": "echo 'No build required for static site with serverless functions'"
   },
   "keywords": ["ads", "dashboard", "facebook", "buyanyinsurance"],
   "author": "Wasim Ullah",
