@@ -1,0 +1,39 @@
+{
+  "buildCommand": "cd marketing-dashboard-vercel && npm run build",
+  "outputDirectory": "marketing-dashboard-vercel",
+  "public": "marketing-dashboard-vercel",
+  "functions": {
+    "marketing-dashboard-vercel/api/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/marketing-dashboard-vercel/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/marketing-dashboard-vercel/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    }
+  ]
+}
