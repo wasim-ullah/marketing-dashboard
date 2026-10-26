@@ -1,21 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "marketing-dashboard-vercel",
-  "functions": {
-    "marketing-dashboard-vercel/api/*.js": {
-      "runtime": "node@18"
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/marketing-dashboard-vercel/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/marketing-dashboard-vercel/index.html"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
