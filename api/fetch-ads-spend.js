@@ -78,23 +78,39 @@ async function fetchFacebookAdsData(startDate, endDate) {
     // Ensure account ID has 'act_' prefix
     const formattedAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
 
-    // Format dates for Facebook API (YYYY-MM-DD)
-    const url =
+    // Look up the account's own name and billing currency
+    const accountRes = await fetch(
+      `https://graph.facebook.com/v18.0/${formattedAccountId}?fields=name,currency&access_token=${accessToken}`
+    );
+    const account = await accountRes.json();
+    if (account.error) throw new Error(`Facebook API error: ${account.error.message}`);
+    const currency = account.currency || 'USD';
+    // Only convert when the account is billed in USD; AED accounts are used as-is
+    const rate = currency === 'AED' ? 1 : currency === 'USD' ? USD_TO_AED : null;
+    if (rate === null) throw new Error(`Ad account currency ${currency} is not supported (expected AED or USD)`);
+
+    const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }));
+    let url =
       `https://graph.facebook.com/v18.0/${formattedAccountId}/insights?` +
+      `level=campaign&limit=500&` +
       `fields=campaign_name,campaign_id,spend,clicks,impressions,actions&` +
-      `time_range={"since":"${startDate}","until":"${endDate}"}&` +
+      `time_range=${timeRange}&` +
       `access_token=${accessToken}`;
 
-    console.log(`[Facebook] Fetching ads data from ${startDate} to ${endDate}`);
-    console.log(`[Facebook] Account ID: ${formattedAccountId}`);
+    console.log(`[Facebook] ${account.name} (${formattedAccountId}), currency ${currency}, ${startDate} to ${endDate}`);
 
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errorMsg = data.error?.message || `HTTP ${response.status}`;
-      console.error(`[Facebook] API error: ${errorMsg}`);
-      throw new Error(`Facebook API error: ${errorMsg}`);
+    // Follow pagination so no campaigns are missed
+    const data = { data: [] };
+    while (url) {
+      const response = await fetch(url);
+      const page = await response.json();
+      if (!response.ok || page.error) {
+        const errorMsg = page.error?.message || `HTTP ${response.status}`;
+        console.error(`[Facebook] API error: ${errorMsg}`);
+        throw new Error(`Facebook API error: ${errorMsg}`);
+      }
+      data.data.push(...(page.data || []));
+      url = page.paging?.next || null;
     }
 
     let totalSpend = 0;
@@ -105,9 +121,8 @@ async function fetchFacebookAdsData(startDate, endDate) {
       console.log(`[Facebook] Found ${data.data.length} records`);
 
       data.data.forEach((row) => {
-        // Convert USD to AED
-        const spendUSD = parseFloat(row.spend || 0);
-        const spendAED = spendUSD * USD_TO_AED;
+        // Convert to AED only if the account is billed in USD
+        const spendAED = parseFloat(row.spend || 0) * rate;
         totalSpend += spendAED;
 
         const campaign = row.campaign_name || `Campaign ${row.campaign_id || 'Unknown'}`;
@@ -145,6 +160,7 @@ async function fetchFacebookAdsData(startDate, endDate) {
       source: 'facebook_ads',
       totalSpend: totalSpend,
       bySource: bySource,
+      account: { id: formattedAccountId, name: account.name, currency },
     };
   } catch (error) {
     console.error('[Facebook] Ads API error:', error.message);
@@ -252,6 +268,7 @@ function combineAdsData(facebookData, googleData, bingData) {
           ? ((combinedSpend.bing / combinedSpend.total) * 100).toFixed(2)
           : 0,
     },
+    facebookAccount: facebookData.account || null,
     errors: {
       facebook: facebookData.error || null,
       google: googleData.error || null,

@@ -531,6 +531,9 @@
 
                 if (data.data.errors && data.data.errors.facebook) {
                     msg.innerHTML = `<div class="error">Facebook: ${data.data.errors.facebook}</div>`;
+                } else if (data.data.facebookAccount) {
+                    const a = data.data.facebookAccount;
+                    msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${a.name}</strong> (${a.id}) · billed in ${a.currency}${a.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}</p>`;
                 }
 
                 const campaigns = data.data.campaigns.facebook_campaigns || {};
