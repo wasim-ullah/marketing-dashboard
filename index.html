@@ -371,6 +371,13 @@
             <div id="fbKpiCards" class="kpi-grid"></div>
             <div id="fbCampaignsTable"></div>
         </div>
+
+        <div class="table-container" id="bingAdsSection">
+            <h3>Bing Ad Spend</h3>
+            <div id="bingAdsMessage"></div>
+            <div id="bingKpiCards" class="kpi-grid"></div>
+            <div id="bingCampaignsTable"></div>
+        </div>
     </div>
 
     <script>
@@ -509,16 +516,17 @@
                 console.error('Error:', error);
             }
 
-            loadFacebookAds(dateFrom, dateTo);
+            loadAdSpend(dateFrom, dateTo);
         }
 
-        // Facebook Ads spend (already converted to AED by the backend)
-        async function loadFacebookAds(startDate, endDate) {
-            const msg = document.getElementById('fbAdsMessage');
-            const cards = document.getElementById('fbKpiCards');
-            const tableDiv = document.getElementById('fbCampaignsTable');
-            msg.innerHTML = '';
+        // Ad spend for Facebook and Bing (backend already converts to AED)
+        const AD_PLATFORMS = [
+            { key: 'facebook', label: 'Facebook', icon: '📘', prefix: 'fb' },
+            { key: 'bing', label: 'Bing', icon: '🔎', prefix: 'bing' }
+        ];
 
+        async function loadAdSpend(startDate, endDate) {
+            AD_PLATFORMS.forEach(p => { document.getElementById(p.prefix + 'AdsMessage').innerHTML = ''; });
             try {
                 const response = await fetch('/api/fetch-ads-spend', {
                     method: 'POST',
@@ -528,52 +536,62 @@
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 if (!data.data) throw new Error('No ads data returned');
-
-                if (data.data.errors && data.data.errors.facebook) {
-                    msg.innerHTML = `<div class="error">Facebook: ${data.data.errors.facebook}</div>`;
-                } else if (data.data.facebookAccount) {
-                    const a = data.data.facebookAccount;
-                    msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${a.name}</strong> (${a.id}) · billed in ${a.currency}${a.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}</p>`;
-                }
-
-                const campaigns = data.data.campaigns.facebook_campaigns || {};
-                let clicks = 0, impressions = 0;
-                Object.values(campaigns).forEach(c => { clicks += c.clicks; impressions += c.impressions; });
-                const spend = data.data.spend.facebook || 0;
-
-                const fbKpis = [
-                    { title: '📘 Facebook Spend', value: formatCurrency(spend) },
-                    { title: '🖱️ Clicks', value: clicks.toLocaleString() },
-                    { title: '👁️ Impressions', value: impressions.toLocaleString() },
-                    { title: '💲 Cost per Click', value: formatCurrency(clicks > 0 ? spend / clicks : 0) }
-                ];
-                cards.innerHTML = fbKpis.map(k =>
-                    `<div class="kpi-card"><h4>${k.title}</h4><div class="value">${k.value}</div></div>`
-                ).join('');
-
-                const rows = Object.entries(campaigns).sort((a, b) => b[1].spend - a[1].spend);
-                if (rows.length === 0) {
-                    tableDiv.innerHTML = '<p style="color: #666; padding: 20px;">No Facebook campaigns with spend in this date range.</p>';
-                    return;
-                }
-                tableDiv.innerHTML = `
-                    <table>
-                        <thead><tr><th>Campaign</th><th>Spend</th><th>Clicks</th><th>Impressions</th><th>CPC</th></tr></thead>
-                        <tbody>
-                            ${rows.map(([name, c]) => `
-                                <tr>
-                                    <td>${name}</td>
-                                    <td>${formatCurrency(c.spend)}</td>
-                                    <td>${c.clicks.toLocaleString()}</td>
-                                    <td>${c.impressions.toLocaleString()}</td>
-                                    <td>${formatCurrency(c.clicks > 0 ? c.spend / c.clicks : 0)}</td>
-                                </tr>`).join('')}
-                        </tbody>
-                    </table>`;
+                AD_PLATFORMS.forEach(p => renderPlatform(p, data.data));
             } catch (error) {
-                msg.innerHTML = `<div class="error">Failed to load Facebook ads: ${error.message}</div>`;
-                console.error('FB Ads error:', error);
+                AD_PLATFORMS.forEach(p => {
+                    document.getElementById(p.prefix + 'AdsMessage').innerHTML = `<div class="error">Failed to load ${p.label} ads: ${error.message}</div>`;
+                });
+                console.error('Ads error:', error);
             }
+        }
+
+        function renderPlatform(p, d) {
+            const msg = document.getElementById(p.prefix + 'AdsMessage');
+            const cards = document.getElementById(p.prefix + 'KpiCards');
+            const tableDiv = document.getElementById(p.prefix + 'CampaignsTable');
+            const err = d.errors && d.errors[p.key];
+            const account = d[p.key + 'Account'];
+
+            if (err) {
+                msg.innerHTML = `<div class="error">${p.label}: ${err}</div>`;
+            } else if (account) {
+                msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}</p>`;
+            }
+
+            const campaigns = (d.campaigns && d.campaigns[p.key + '_campaigns']) || {};
+            let clicks = 0, impressions = 0;
+            Object.values(campaigns).forEach(c => { clicks += c.clicks; impressions += c.impressions; });
+            const spend = (d.spend && d.spend[p.key]) || 0;
+
+            const kpis = [
+                { title: `${p.icon} ${p.label} Spend`, value: formatCurrency(spend) },
+                { title: '🖱️ Clicks', value: clicks.toLocaleString() },
+                { title: '👁️ Impressions', value: impressions.toLocaleString() },
+                { title: '💲 Cost per Click', value: formatCurrency(clicks > 0 ? spend / clicks : 0) }
+            ];
+            cards.innerHTML = kpis.map(k =>
+                `<div class="kpi-card"><h4>${k.title}</h4><div class="value">${k.value}</div></div>`
+            ).join('');
+
+            const rows = Object.entries(campaigns).sort((a, b) => b[1].spend - a[1].spend);
+            if (rows.length === 0) {
+                tableDiv.innerHTML = err ? '' : `<p style="color: #666; padding: 20px;">No ${p.label} campaigns with spend in this date range.</p>`;
+                return;
+            }
+            tableDiv.innerHTML = `
+                <table>
+                    <thead><tr><th>Campaign</th><th>Spend</th><th>Clicks</th><th>Impressions</th><th>CPC</th></tr></thead>
+                    <tbody>
+                        ${rows.map(([name, c]) => `
+                            <tr>
+                                <td>${name}</td>
+                                <td>${formatCurrency(c.spend)}</td>
+                                <td>${c.clicks.toLocaleString()}</td>
+                                <td>${c.impressions.toLocaleString()}</td>
+                                <td>${formatCurrency(c.clicks > 0 ? c.spend / c.clicks : 0)}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>`;
         }
 
         // Transform API response to flat metrics array

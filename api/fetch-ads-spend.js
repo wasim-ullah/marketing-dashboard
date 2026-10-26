@@ -3,6 +3,8 @@
  * Environment variables needed:
  * - FACEBOOK_ACCESS_TOKEN
  * - FACEBOOK_AD_ACCOUNT_ID
+ * - BING_CLIENT_ID, BING_CLIENT_SECRET, BING_REFRESH_TOKEN (get it from /api/bing-auth)
+ * - BING_DEVELOPER_TOKEN, BING_CUSTOMER_ID, BING_ACCOUNT_ID
  */
 
 module.exports = async function handler(req, res) {
@@ -205,26 +207,185 @@ async function fetchGoogleAdsData(startDate, endDate) {
  * Placeholder for future implementation
  */
 async function fetchBingAdsData(startDate, endDate) {
-  try {
-    console.log('[Bing] Bing Ads integration pending');
-    // TODO: Implement Bing Ads API integration
-    // Requires: bingads-api library and proper credentials
+  const {
+    BING_CLIENT_ID, BING_CLIENT_SECRET, BING_REFRESH_TOKEN,
+    BING_DEVELOPER_TOKEN, BING_CUSTOMER_ID, BING_ACCOUNT_ID,
+  } = process.env;
+  const USD_TO_AED = 3.67;
 
+  if (!BING_CLIENT_ID || !BING_REFRESH_TOKEN || !BING_DEVELOPER_TOKEN || !BING_CUSTOMER_ID || !BING_ACCOUNT_ID) {
+    return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: 'Bing Ads not connected yet (missing BING_* environment variables)' };
+  }
+
+  try {
+    // 1. Swap the long-lived refresh token for a short-lived access token
+    const tokenBody = new URLSearchParams({
+      client_id: BING_CLIENT_ID,
+      grant_type: 'refresh_token',
+      refresh_token: BING_REFRESH_TOKEN,
+      scope: 'https://ads.microsoft.com/msads.manage offline_access',
+    });
+    if (BING_CLIENT_SECRET) tokenBody.set('client_secret', BING_CLIENT_SECRET);
+    const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody,
+    });
+    const token = await tokenRes.json();
+    if (!token.access_token) {
+      throw new Error(`Microsoft sign-in failed: ${token.error_description || token.error || tokenRes.status}. Re-run /api/bing-auth to get a new refresh token.`);
+    }
+
+    const headers = {
+      'Authorization': `Bearer ${token.access_token}`,
+      'DeveloperToken': BING_DEVELOPER_TOKEN,
+      'CustomerId': String(BING_CUSTOMER_ID),
+      'CustomerAccountId': String(BING_ACCOUNT_ID),
+      'Content-Type': 'application/json',
+    };
+    const base = 'https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport';
+    const toDate = (s) => { const [y, m, d] = s.split('-').map(Number); return { Year: y, Month: m, Day: d }; };
+
+    // 2. Ask Microsoft to build a campaign performance report for the date range
+    const submitRes = await fetch(`${base}/Submit`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ReportRequest: {
+          Type: 'CampaignPerformanceReportRequest',
+          ReportName: 'Dashboard campaign spend',
+          Format: 'Csv',
+          FormatVersion: '2.0',
+          ReturnOnlyCompleteData: false,
+          ExcludeReportHeader: true,
+          ExcludeReportFooter: true,
+          ExcludeColumnHeaders: false,
+          Aggregation: 'Summary',
+          Columns: ['AccountName', 'CampaignId', 'CampaignName', 'CurrencyCode', 'Spend', 'Clicks', 'Impressions', 'Conversions'],
+          Scope: { AccountIds: [Number(BING_ACCOUNT_ID)] },
+          Time: {
+            CustomDateRangeStart: toDate(startDate),
+            CustomDateRangeEnd: toDate(endDate),
+            ReportTimeZone: 'AbuDhabiMuscat',
+          },
+        },
+      }),
+    });
+    const submit = await submitRes.json();
+    if (!submitRes.ok || !submit.ReportRequestId) {
+      throw new Error(`Bing report request failed: ${bingErrorText(submit) || submitRes.status}`);
+    }
+
+    // 3. Wait for the report to be ready (usually a few seconds)
+    let downloadUrl = null;
+    const deadline = Date.now() + 45000;
+    while (true) {
+      const pollRes = await fetch(`${base}/Poll`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ReportRequestId: submit.ReportRequestId }),
+      });
+      const poll = await pollRes.json();
+      const status = poll.ReportRequestStatus?.Status;
+      if (!pollRes.ok || status === 'Error') throw new Error(`Bing report failed: ${bingErrorText(poll) || status}`);
+      if (status === 'Success') { downloadUrl = poll.ReportRequestStatus.ReportDownloadUrl; break; }
+      if (Date.now() > deadline) throw new Error('Bing report took too long to generate, try again');
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    // No URL means no activity in this date range
+    if (!downloadUrl) {
+      console.log('[Bing] No data for this date range');
+      return { source: 'bing_ads', totalSpend: 0, bySource: {} };
+    }
+
+    // 4. Download the zipped CSV and add up spend per campaign
+    const zipBuf = Buffer.from(await (await fetch(downloadUrl)).arrayBuffer());
+    const rows = parseCsv(unzipFirstFile(zipBuf).replace(/^﻿/, ''));
+    const [header, ...records] = rows;
+    const col = (name) => header.indexOf(name);
+
+    let totalSpend = 0;
+    let accountName = null;
+    let currency = null;
+    const bySource = {};
+    for (const r of records) {
+      if (r.length < header.length) continue;
+      currency = r[col('CurrencyCode')] || currency;
+      accountName = r[col('AccountName')] || accountName;
+      const rate = currency === 'USD' ? USD_TO_AED : 1;
+      const num = (v) => parseFloat(String(v || '0').replace(/,/g, '')) || 0;
+      const spend = num(r[col('Spend')]) * rate;
+      const name = r[col('CampaignName')] || `Campaign ${r[col('CampaignId')]}`;
+      bySource[name] = bySource[name] || { spend: 0, clicks: 0, impressions: 0, conversions: 0, campaignId: r[col('CampaignId')] };
+      bySource[name].spend += spend;
+      bySource[name].clicks += num(r[col('Clicks')]);
+      bySource[name].impressions += num(r[col('Impressions')]);
+      bySource[name].conversions += num(r[col('Conversions')]);
+      totalSpend += spend;
+    }
+    if (currency && currency !== 'AED' && currency !== 'USD') {
+      throw new Error(`Bing account currency ${currency} is not supported (expected AED or USD)`);
+    }
+
+    console.log(`[Bing] ${accountName} (${BING_ACCOUNT_ID}), ${currency}, total AED ${totalSpend.toFixed(2)}, campaigns ${Object.keys(bySource).length}`);
     return {
       source: 'bing_ads',
-      totalSpend: 0,
-      bySource: {},
-      error: 'Bing Ads integration pending',
+      totalSpend,
+      bySource,
+      account: { id: String(BING_ACCOUNT_ID), name: accountName, currency },
     };
   } catch (error) {
-    console.error('[Bing] Ads API error:', error);
-    return {
-      source: 'bing_ads',
-      totalSpend: 0,
-      bySource: {},
-      error: error.message,
-    };
+    console.error('[Bing] Ads API error:', error.message);
+    return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: error.message };
   }
+}
+
+function bingErrorText(body) {
+  if (!body) return '';
+  const errs = body.OperationErrors || body.Errors || body.BatchErrors;
+  if (Array.isArray(errs) && errs.length) return errs.map((e) => e.Message || e.ErrorCode).join('; ');
+  return body.Message || body.message || '';
+}
+
+// Extract the first file from a zip buffer (Microsoft reports are a single zipped CSV)
+function unzipFirstFile(buf) {
+  const zlib = require('zlib');
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return buf.toString('utf8'); // not zipped
+  const cd = buf.readUInt32LE(eocd + 16);
+  const method = buf.readUInt16LE(cd + 10);
+  const compSize = buf.readUInt32LE(cd + 20);
+  const local = buf.readUInt32LE(cd + 42);
+  const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+  const data = buf.subarray(dataStart, dataStart + compSize);
+  return (method === 8 ? zlib.inflateRawSync(data) : data).toString('utf8');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.some((f) => f !== '')) rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  row.push(field);
+  if (row.some((f) => f !== '')) rows.push(row);
+  return rows;
 }
 
 /**
@@ -269,6 +430,7 @@ function combineAdsData(facebookData, googleData, bingData) {
           : 0,
     },
     facebookAccount: facebookData.account || null,
+    bingAccount: bingData.account || null,
     errors: {
       facebook: facebookData.error || null,
       google: googleData.error || null,
