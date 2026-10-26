@@ -1,9 +1,12 @@
 {
-  "outputDirectory": "marketing-dashboard-vercel",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/marketing-dashboard-vercel/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/marketing-dashboard-vercel/index.html"
     }
   ],
   "headers": [
