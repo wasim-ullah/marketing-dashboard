@@ -62,6 +62,7 @@ module.exports = async function handler(req, res) {
 async function fetchFacebookAdsData(startDate, endDate) {
   const adAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID;
   const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+  const USD_TO_AED = 3.67; // Fixed exchange rate
 
   if (!adAccountId || !accessToken) {
     console.warn('Missing Facebook API credentials (FACEBOOK_ACCESS_TOKEN or FACEBOOK_AD_ACCOUNT_ID)');
@@ -104,8 +105,10 @@ async function fetchFacebookAdsData(startDate, endDate) {
       console.log(`[Facebook] Found ${data.data.length} records`);
 
       data.data.forEach((row) => {
-        const spend = parseFloat(row.spend || 0);
-        totalSpend += spend;
+        // Convert USD to AED
+        const spendUSD = parseFloat(row.spend || 0);
+        const spendAED = spendUSD * USD_TO_AED;
+        totalSpend += spendAED;
 
         const campaign = row.campaign_name || `Campaign ${row.campaign_id || 'Unknown'}`;
         if (!bySource[campaign]) {
@@ -118,7 +121,7 @@ async function fetchFacebookAdsData(startDate, endDate) {
           };
         }
 
-        bySource[campaign].spend += spend;
+        bySource[campaign].spend += spendAED;
         bySource[campaign].clicks += parseInt(row.clicks || 0);
         bySource[campaign].impressions += parseInt(row.impressions || 0);
 
