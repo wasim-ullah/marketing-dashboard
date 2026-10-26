@@ -1,0 +1,13 @@
+{
+  "name": "buyanyinsurance-dashboard",
+  "version": "1.0.0",
+  "description": "BuyAnyInsurance Ad Spend Dashboard with Facebook Ads integration",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build"
+  },
+  "keywords": ["ads", "dashboard", "facebook", "buyanyinsurance"],
+  "author": "Wasim Ullah",
+  "license": "MIT"
+}

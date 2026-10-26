@@ -1,4 +1,12 @@
 {
+  "buildCommand": "npm run build",
+  "public": ".",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
