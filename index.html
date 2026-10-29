@@ -542,6 +542,23 @@
         }
 
         // Ad spend per platform (backend already converts to AED)
+        // Line icons from Lucide (lucide.dev, ISC licence), white on a translucent chip
+        const UI_ICONS = {
+            users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /> <path d="M16 3.128a4 4 0 0 1 0 7.744" /> <path d="M22 21v-2a4 4 0 0 0-3-3.87" /> <circle cx="9" cy="7" r="4" />',
+            userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /> <circle cx="9" cy="7" r="4" /> <line x1="19" x2="19" y1="8" y2="14" /> <line x1="22" x2="16" y1="11" y2="11" />',
+            sales: '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /> <path d="m16 9-5.5 5.5L8 12" />',
+            wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" /> <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />',
+            revenue: '<path d="M16 7h6v6" /> <path d="m22 7-8.5 8.5-5-5L2 17" />',
+            target: '<circle cx="12" cy="12" r="10" /> <circle cx="12" cy="12" r="6" /> <circle cx="12" cy="12" r="2" />',
+            click: '<path d="M14 4.1 12 6" /> <path d="m5.1 8-2.9-.8" /> <path d="m6 12-1.9 2" /> <path d="M7.2 2.2 8 5.1" /> <path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z" />',
+            eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /> <circle cx="12" cy="12" r="3" />',
+            coins: '<path d="M13.744 17.736a6 6 0 1 1-7.48-7.48" /> <path d="M15 6h1v4" /> <path d="m6.134 14.768.866-.5 2 3.464" /> <circle cx="16" cy="8" r="6" />'
+        };
+
+        function uiIcon(name) {
+            return `<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; background:rgba(255,255,255,0.18); border-radius:7px; margin-right:6px; flex-shrink:0;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${UI_ICONS[name]}</svg></span>`;
+        }
+
         // Brand logos (supplied images, trimmed to 64px), shown on a small white badge
         const BRAND_LOGOS = {
             meta: { title: 'Meta (Facebook & Instagram)', src: 'data:image/png;base64,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' },
@@ -589,9 +606,9 @@
 
             const kpis = [
                 { title: `${p.icon}${p.label} Spend`, value: formatCurrency(spend) },
-                { title: '🖱️ Clicks', value: clicks.toLocaleString() },
-                { title: '👁️ Impressions', value: impressions.toLocaleString() },
-                { title: '💲 Cost per Click', value: formatCurrency(clicks > 0 ? spend / clicks : 0) }
+                { title: `${uiIcon('click')}Clicks`, value: clicks.toLocaleString() },
+                { title: `${uiIcon('eye')}Impressions`, value: impressions.toLocaleString() },
+                { title: `${uiIcon('coins')}Cost per Click`, value: formatCurrency(clicks > 0 ? spend / clicks : 0) }
             ];
             cards.innerHTML = kpis.map(k =>
                 `<div class="kpi-card"><h4>${k.title}</h4><div class="value">${k.value}</div></div>`
@@ -760,13 +777,13 @@
                     value: totalLeads,
                     subvalue: deletedLeads,
                     sublabel: 'Deleted',
-                    icon: '📊'
+                    icon: uiIcon('users')
                 },
-                { title: 'New Leads', value: newLeads, icon: '✨' },
-                { title: 'Sales', value: totalSales, icon: '💰' },
-                { title: 'Marketing Spend', value: formatCurrency(spendOverride ?? totalSpend), icon: '💵' },
-                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '📈' },
-                { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: '🎯' }
+                { title: 'New Leads', value: newLeads, icon: uiIcon('userPlus') },
+                { title: 'Sales', value: totalSales, icon: uiIcon('sales') },
+                { title: 'Marketing Spend', value: formatCurrency(spendOverride ?? totalSpend), icon: uiIcon('wallet') },
+                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue') },
+                { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: uiIcon('target') }
             ];
 
             kpis.forEach(kpi => {
