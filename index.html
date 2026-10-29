@@ -363,7 +363,7 @@
 
         <div id="kpiCards" class="kpi-grid"></div>
         <div id="chartsContainer" class="charts-grid"></div>
-        <div id="allocationContainer" style="margin-bottom: 15px;"></div>
+        <div id="platformContainer" class="table-container"></div>
         <div id="tableContainer" class="table-container"></div>
 
         <div class="table-container" id="fbAdsSection">
@@ -616,12 +616,11 @@
 
         function renderDashboard(apiResponse, ads) {
             try {
-                const skyeMetrics = transformApiResponse(apiResponse);
-                const allocation = ads ? allocateAdSpend(skyeMetrics, ads) : null;
-                const metrics = allocation ? allocation.metrics : skyeMetrics;
-                renderKPIs(metrics);
-                renderCharts(metrics.filter(m => !m._noLeads));
-                renderAllocation(allocation);
+                const metrics = transformApiResponse(apiResponse);
+                const comparison = buildPlatformComparison(metrics, ads);
+                renderKPIs(metrics, ads ? comparison.total.spend : null);
+                renderCharts(metrics);
+                renderPlatformComparison(comparison);
                 renderTable(metrics);
             } catch (error) {
                 showMessage(`Error rendering dashboard: ${error.message}`, 'error');
@@ -629,9 +628,8 @@
             }
         }
 
-        // ---- Allocate ad platform spend to Skye campaigns ----
-        // Platform comes from the Skye row's UTM source (falls back to channel);
-        // campaign is matched by ID, then exact name, then close name match.
+        // ---- Platform-level comparison: ad spend vs Skye results ----
+        // A Skye row's platform comes from its UTM source (falls back to channel).
         const PLATFORM_PATTERNS = {
             facebook: /facebook|\bfb\b|meta|instagram|\big\b/i,
             google: /google|adwords|\bgads\b|youtube/i,
@@ -648,114 +646,75 @@
             return null;
         }
 
-        function normName(s) {
-            let t = String(s || '');
-            try { t = decodeURIComponent(t.replace(/\+/g, ' ')); } catch (e) { /* keep as is */ }
-            return t.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]/g, '');
-        }
-
-        // Best ad campaign for one Skye utm_campaign: {name, type} or null
-        function findCampaign(utmCampaign, campaigns) {
-            const raw = String(utmCampaign || '').trim();
-            const n = normName(raw);
-            if (!n) return null;
-            const entries = Object.entries(campaigns);
-            for (const [name, c] of entries) {
-                if (c.campaignId && String(c.campaignId) === raw) return { name, type: 'id' };
-            }
-            for (const [name] of entries) {
-                if (normName(name) === n) return { name, type: 'exact' };
-            }
-            if (n.length < 4) return null;
-            let best = null;
-            for (const [name] of entries) {
-                const cn = normName(name);
-                if (cn.length < 4) continue;
-                if (cn.includes(n) || n.includes(cn)) {
-                    const overlap = Math.min(cn.length, n.length);
-                    if (!best || overlap > best.overlap) best = { name, type: 'partial', overlap };
-                }
-            }
-            return best ? { name: best.name, type: best.type } : null;
-        }
-
-        function allocateAdSpend(skyeMetrics, ads) {
-            const metrics = skyeMetrics.map(m => ({ ...m, _platform: platformOf(m), _match: null }));
-            const report = { allocated: 0, totalAdSpend: 0, platforms: [] };
-
+        function buildPlatformComparison(skyeMetrics, ads) {
+            const blank = () => ({ spend: 0, leads: 0, newLeads: 0, sales: 0, revenue: 0, sources: new Set() });
+            const rows = {};
             AD_PLATFORMS.forEach(p => {
-                const campaigns = (ads.campaigns && ads.campaigns[p.key + '_campaigns']) || {};
-                const platformSpend = Object.values(campaigns).reduce((sum, c) => sum + (c.spend || 0), 0);
-                const rows = metrics.filter(m => m._platform === p.key);
-                const info = { label: p.label, spend: platformSpend, matchedCampaigns: 0, totalCampaigns: Object.keys(campaigns).length, unmatchedSkye: [], noLeadCampaigns: [] };
-                report.totalAdSpend += platformSpend;
+                rows[p.key] = { ...blank(), label: `${p.icon} ${p.label}`, spend: (ads && ads.spend && ads.spend[p.key]) || 0, adSpendLoaded: !!ads };
+            });
+            rows.other = { ...blank(), label: 'Other sources (organic, direct, etc.)', other: true };
 
-                // Ad spend replaces Skye's own spend figure for rows from this platform
-                const groups = {};
-                rows.forEach(m => {
-                    m.marketing_spend = 0;
-                    const hit = findCampaign(m.campaign, campaigns);
-                    if (hit) {
-                        m._match = hit.type;
-                        m._adCampaign = hit.name;
-                        (groups[hit.name] = groups[hit.name] || []).push(m);
-                    } else {
-                        m._match = 'unmatched';
-                        info.unmatchedSkye.push(m.campaign || '(no campaign)');
-                    }
-                });
-
-                Object.entries(campaigns).forEach(([name, c]) => {
-                    const spend = c.spend || 0;
-                    const group = groups[name];
-                    if (group && group.length) {
-                        // Split across Skye rows by share of leads (equally if none have leads)
-                        info.matchedCampaigns++;
-                        const leads = group.map(m => formatNumber(m.total_leads || 0));
-                        const totalLeads = leads.reduce((a, b) => a + b, 0);
-                        group.forEach((m, i) => {
-                            m.marketing_spend += totalLeads > 0 ? spend * leads[i] / totalLeads : spend / group.length;
-                        });
-                        report.allocated += spend;
-                    } else if (spend > 0) {
-                        // Spend with no Skye leads still counts, shown as its own row
-                        info.noLeadCampaigns.push(name);
-                        metrics.push({
-                            channel: 'Paid', source: p.label, campaign: name,
-                            total_leads: 0, new_leads: 0, pending_leads: 0, total_sales: 0,
-                            lost_leads: 0, deleted_leads: 0, total_revenue: 0,
-                            marketing_spend: spend, _platform: p.key, _match: 'no-leads', _noLeads: true
-                        });
-                    }
-                });
-                report.platforms.push(info);
+            skyeMetrics.forEach(m => {
+                const key = platformOf(m) || 'other';
+                const r = rows[key];
+                r.leads += formatNumber(m.total_leads || 0);
+                r.newLeads += formatNumber(m.new_leads || 0);
+                r.sales += formatNumber(m.total_sales || 0);
+                r.revenue += formatNumber(m.total_revenue || 0);
+                if (m.source) r.sources.add(m.source);
+                if (key === 'other') r.spend += formatNumber(m.marketing_spend || 0); // Skye's own spend for non-ad sources
             });
 
-            return { metrics, report };
+            const list = [...AD_PLATFORMS.map(p => rows[p.key]), rows.other];
+            const total = list.reduce((t, r) => ({
+                spend: t.spend + r.spend, leads: t.leads + r.leads, newLeads: t.newLeads + r.newLeads,
+                sales: t.sales + r.sales, revenue: t.revenue + r.revenue
+            }), { spend: 0, leads: 0, newLeads: 0, sales: 0, revenue: 0 });
+            return { list, total };
         }
 
-        function renderAllocation(allocation) {
-            const box = document.getElementById('allocationContainer');
-            if (!allocation) { box.innerHTML = ''; return; }
-            const r = allocation.report;
-            if (r.totalAdSpend === 0) { box.innerHTML = ''; return; }
-            const pct = (r.allocated / r.totalAdSpend * 100).toFixed(0);
+        function renderPlatformComparison(cmp) {
+            const box = document.getElementById('platformContainer');
             const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-            const lines = r.platforms.filter(p => p.totalCampaigns > 0).map(p => {
-                let html = `<li><strong>${p.label}:</strong> ${p.matchedCampaigns} of ${p.totalCampaigns} campaigns matched to Skye`;
-                if (p.noLeadCampaigns.length) html += `<br><span style="color:#b45309;">Spend with no Skye leads:</span> ${p.noLeadCampaigns.map(esc).join(', ')}`;
-                if (p.unmatchedSkye.length) html += `<br><span style="color:#b45309;">Skye campaigns with no matching ${p.label} campaign:</span> ${[...new Set(p.unmatchedSkye)].map(esc).join(', ')}`;
-                return html + '</li>';
-            }).join('');
+            const ratio = (a, b) => b > 0 ? a / b : null;
+            const money = (v) => v === null ? '-' : formatCurrency(v);
+            const line = (r, label, isTotal) => {
+                const cpl = ratio(r.spend, r.leads);
+                const cps = ratio(r.spend, r.sales);
+                const conv = ratio(r.sales, r.leads);
+                const roas = ratio(r.revenue, r.spend);
+                const sources = r.sources && r.sources.size ? `<span style="display:block; font-size: 11px; color: #888;">UTM source: ${[...r.sources].map(esc).join(', ')}</span>` : '';
+                const tag = isTotal ? 'th' : 'td';
+                return `<tr${isTotal ? ' style="background: #f8f9fa;"' : ''}>
+                    <${tag} style="text-align: left;">${label}${isTotal ? '' : sources}</${tag}>
+                    <${tag}>${formatCurrency(r.spend)}</${tag}>
+                    <${tag}>${r.leads.toLocaleString()}</${tag}>
+                    <${tag}>${r.newLeads.toLocaleString()}</${tag}>
+                    <${tag}>${r.sales.toLocaleString()}</${tag}>
+                    <${tag}>${formatCurrency(r.revenue)}</${tag}>
+                    <${tag}>${money(cpl)}</${tag}>
+                    <${tag}>${money(cps)}</${tag}>
+                    <${tag}>${conv === null ? '-' : (conv * 100).toFixed(2) + '%'}</${tag}>
+                    <${tag}>${roas === null ? '-' : roas.toFixed(2) + 'x'}</${tag}>
+                </tr>`;
+            };
             box.innerHTML = `
-                <details ${pct < 100 ? 'open' : ''}>
-                    <summary style="cursor: pointer; font-weight: 600;">Ad spend allocated to Skye campaigns: ${formatCurrency(r.allocated)} of ${formatCurrency(r.totalAdSpend)} (${pct}%)</summary>
-                    <ul style="margin: 10px 0 0 20px; line-height: 1.7; color: #444;">${lines}</ul>
-                    <p style="color: #666; font-size: 13px; margin-top: 8px;">Matched using each Skye row's UTM source (platform) and UTM campaign (campaign ID or name). Unmatched ad spend is still included in the totals as its own row.</p>
-                </details>`;
+                <h3>Performance by Platform</h3>
+                <table>
+                    <thead><tr>
+                        <th>Platform</th><th>Spend</th><th>Leads</th><th>New Leads</th><th>Sales</th><th>Revenue</th>
+                        <th>Cost/Lead</th><th>Cost/Sale</th><th>Conversion %</th><th>ROAS</th>
+                    </tr></thead>
+                    <tbody>
+                        ${cmp.list.map(r => line(r, r.label, false)).join('')}
+                        ${line(cmp.total, 'Total', true)}
+                    </tbody>
+                </table>
+                <p style="color: #666; font-size: 13px; margin-top: 10px;">Spend for Facebook, Google and Bing comes from each ad platform; leads, sales and revenue come from Skye, grouped by UTM source. "Other sources" uses Skye's own spend figure.</p>`;
         }
 
-        function renderKPIs(metrics) {
+        // spendOverride: total ad platform spend + Skye spend for other sources
+        function renderKPIs(metrics, spendOverride) {
             const kpiContainer = document.getElementById('kpiCards');
             kpiContainer.innerHTML = '';
 
@@ -788,7 +747,7 @@
                 },
                 { title: 'New Leads', value: newLeads, icon: '✨' },
                 { title: 'Sales', value: totalSales, icon: '💰' },
-                { title: 'Marketing Spend', value: formatCurrency(totalSpend), icon: '💵' },
+                { title: 'Marketing Spend', value: formatCurrency(spendOverride ?? totalSpend), icon: '💵' },
                 { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: '📈' },
                 { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: '🎯' }
             ];
@@ -913,14 +872,6 @@
             });
         }
 
-        function matchBadge(m) {
-            const style = 'display:block; font-size: 11px; margin-top: 3px;';
-            if (m._match === 'partial') return `<span style="${style} color:#666;" title="Close name match">≈ ${m._adCampaign}</span>`;
-            if (m._match === 'unmatched') return `<span style="${style} color:#b45309;">⚠ no matching ad campaign</span>`;
-            if (m._match === 'no-leads') return `<span style="${style} color:#b45309;">⚠ ad spend, no Skye leads</span>`;
-            return '';
-        }
-
         function renderTable(metrics) {
             const tableContainer = document.getElementById('tableContainer');
             tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
@@ -965,7 +916,7 @@
                 row.innerHTML = `
                     <td>${metric.channel || 'N/A'}</td>
                     <td>${metric.source || 'N/A'}</td>
-                    <td>${metric.campaign || 'N/A'}${matchBadge(metric)}</td>
+                    <td>${metric.campaign || 'N/A'}</td>
                     <td>${totalLeads.toLocaleString()}</td>
                     <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.pending_leads || 0).toLocaleString()}</td>
