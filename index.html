@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marketing Performance Dashboard - BuyAnyInsurance</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -774,6 +774,41 @@
             });
         }
 
+        // Draws each value on the chart so numbers show without hovering
+        const valueLabelsPlugin = {
+            id: 'valueLabels',
+            afterDatasetsDraw(chart, args, opts) {
+                const { ctx } = chart;
+                const format = opts.format || (v => v.toLocaleString());
+                ctx.save();
+                ctx.font = '600 11px -apple-system, Segoe UI, Roboto, sans-serif';
+                ctx.fillStyle = '#333';
+                chart.data.datasets.forEach((dataset, di) => {
+                    chart.getDatasetMeta(di).data.forEach((el, i) => {
+                        const value = dataset.data[i];
+                        if (value === null || value === undefined || (opts.hideZero && value === 0)) return;
+                        let x = el.x, y = el.y;
+                        if (chart.config.type === 'radar') {
+                            // Push the label outward from the centre so it sits beside the point
+                            const r = chart.scales.r;
+                            const dx = x - r.xCenter, dy = y - r.yCenter;
+                            const len = Math.hypot(dx, dy) || 1;
+                            x += dx / len * 14;
+                            y += dy / len * 14;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                        } else {
+                            y -= 4;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                        }
+                        ctx.fillText(format(value), x, y);
+                    });
+                });
+                ctx.restore();
+            }
+        };
+
         function renderCharts(metrics) {
             const chartsContainer = document.getElementById('chartsContainer');
             chartsContainer.innerHTML = '';
@@ -826,11 +861,13 @@
                         legend: {
                             display: true,
                             position: 'top'
-                        }
+                        },
+                        valueLabels: { format: v => Math.round(v).toLocaleString() }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
+                            grace: '8%',
                             ticks: {
                                 callback: function(value) {
                                     return value.toLocaleString();
@@ -838,7 +875,8 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [valueLabelsPlugin]
             });
 
             // Radar Chart - Conversion Rate by Source
@@ -848,27 +886,34 @@
             chartsContainer.appendChild(radarChartDiv);
 
             new Chart(document.getElementById('radarChart'), {
-                type: 'radar',
+                type: 'bar',
                 data: {
                     labels: sources,
                     datasets: [{
                         label: 'Conversion Rate (%)',
                         data: conversions,
-                        borderColor: 'rgb(102, 126, 234)',
-                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        backgroundColor: 'rgba(118, 75, 162, 0.6)',
+                        borderColor: 'rgb(118, 75, 162)',
                         borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        valueLabels: { format: v => v.toFixed(1) + '%' }
+                    },
                     scales: {
-                        r: {
+                        y: {
                             beginAtZero: true,
-                            max: 100
+                            max: 100,
+                            ticks: { callback: v => v + '%' }
                         }
-                    }
-                }
+                    },
+                    layout: { padding: { top: 16 } }
+                },
+                plugins: [valueLabelsPlugin]
             });
         }
 
