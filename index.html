@@ -363,6 +363,7 @@
 
         <div id="kpiCards" class="kpi-grid"></div>
         <div id="chartsContainer" class="charts-grid"></div>
+        <div id="allocationContainer" style="margin-bottom: 15px;"></div>
         <div id="tableContainer" class="table-container"></div>
 
         <div class="table-container" id="fbAdsSection">
@@ -493,65 +494,55 @@
                 return;
             }
 
-            try {
-                const response = await fetch('/api/fetch-dashboard', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        dateFrom: dateFrom,
-                        dateTo: dateTo
-                    })
+            AD_PLATFORMS.forEach(p => { document.getElementById(p.prefix + 'AdsMessage').innerHTML = ''; });
+
+            // Skye KPIs and ad spend load together so spend can be allocated to Skye campaigns
+            const [kpiResult, adsResult] = await Promise.allSettled([
+                postJson('/api/fetch-dashboard', { dateFrom, dateTo }),
+                postJson('/api/fetch-ads-spend', { startDate: dateFrom, endDate: dateTo })
+            ]);
+
+            let ads = null;
+            if (adsResult.status === 'fulfilled' && adsResult.value.data) {
+                ads = adsResult.value.data;
+                AD_PLATFORMS.forEach(p => renderPlatform(p, ads));
+            } else {
+                const msg = adsResult.status === 'rejected' ? adsResult.reason.message : 'No ads data returned';
+                AD_PLATFORMS.forEach(p => {
+                    document.getElementById(p.prefix + 'AdsMessage').innerHTML = `<div class="error">Failed to load ${p.label} ads: ${msg}</div>`;
                 });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (data.error) {
-                    showMessage(`Error: ${data.error}`, 'error');
-                    return;
-                }
-
-                renderDashboard(data);
-                showMessage('Dashboard updated successfully', 'success');
-            } catch (error) {
-                showMessage(`Failed to fetch dashboard: ${error.message}`, 'error');
-                console.error('Error:', error);
             }
 
-            loadAdSpend(dateFrom, dateTo);
+            if (kpiResult.status === 'rejected') {
+                showMessage(`Failed to fetch dashboard: ${kpiResult.reason.message}`, 'error');
+                console.error('Error:', kpiResult.reason);
+                return;
+            }
+            const data = kpiResult.value;
+            if (data.error) {
+                showMessage(`Error: ${data.error}`, 'error');
+                return;
+            }
+            renderDashboard(data, ads);
+            showMessage('Dashboard updated successfully', 'success');
         }
 
-        // Ad spend for Facebook and Bing (backend already converts to AED)
+        async function postJson(url, body) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+        }
+
+        // Ad spend per platform (backend already converts to AED)
         const AD_PLATFORMS = [
             { key: 'facebook', label: 'Facebook', icon: '📘', prefix: 'fb' },
             { key: 'google', label: 'Google', icon: '🟢', prefix: 'google', scriptHome: 'Google Ads' },
             { key: 'bing', label: 'Bing', icon: '🔎', prefix: 'bing', scriptHome: 'Microsoft Ads' }
         ];
-
-        async function loadAdSpend(startDate, endDate) {
-            AD_PLATFORMS.forEach(p => { document.getElementById(p.prefix + 'AdsMessage').innerHTML = ''; });
-            try {
-                const response = await fetch('/api/fetch-ads-spend', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ startDate, endDate })
-                });
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                if (!data.data) throw new Error('No ads data returned');
-                AD_PLATFORMS.forEach(p => renderPlatform(p, data.data));
-            } catch (error) {
-                AD_PLATFORMS.forEach(p => {
-                    document.getElementById(p.prefix + 'AdsMessage').innerHTML = `<div class="error">Failed to load ${p.label} ads: ${error.message}</div>`;
-                });
-                console.error('Ads error:', error);
-            }
-        }
 
         function renderPlatform(p, d) {
             const msg = document.getElementById(p.prefix + 'AdsMessage');
@@ -623,16 +614,145 @@
             return metrics;
         }
 
-        function renderDashboard(apiResponse) {
+        function renderDashboard(apiResponse, ads) {
             try {
-                const metrics = transformApiResponse(apiResponse);
+                const skyeMetrics = transformApiResponse(apiResponse);
+                const allocation = ads ? allocateAdSpend(skyeMetrics, ads) : null;
+                const metrics = allocation ? allocation.metrics : skyeMetrics;
                 renderKPIs(metrics);
-                renderCharts(metrics);
+                renderCharts(metrics.filter(m => !m._noLeads));
+                renderAllocation(allocation);
                 renderTable(metrics);
             } catch (error) {
                 showMessage(`Error rendering dashboard: ${error.message}`, 'error');
                 console.error('Render error:', error);
             }
+        }
+
+        // ---- Allocate ad platform spend to Skye campaigns ----
+        // Platform comes from the Skye row's UTM source (falls back to channel);
+        // campaign is matched by ID, then exact name, then close name match.
+        const PLATFORM_PATTERNS = {
+            facebook: /facebook|\bfb\b|meta|instagram|\big\b/i,
+            google: /google|adwords|\bgads\b|youtube/i,
+            bing: /bing|microsoft|\bmsads\b|\bmsn\b/i
+        };
+
+        function platformOf(m) {
+            for (const text of [m.source, m.channel]) {
+                if (!text) continue;
+                for (const key of Object.keys(PLATFORM_PATTERNS)) {
+                    if (PLATFORM_PATTERNS[key].test(String(text))) return key;
+                }
+            }
+            return null;
+        }
+
+        function normName(s) {
+            let t = String(s || '');
+            try { t = decodeURIComponent(t.replace(/\+/g, ' ')); } catch (e) { /* keep as is */ }
+            return t.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]/g, '');
+        }
+
+        // Best ad campaign for one Skye utm_campaign: {name, type} or null
+        function findCampaign(utmCampaign, campaigns) {
+            const raw = String(utmCampaign || '').trim();
+            const n = normName(raw);
+            if (!n) return null;
+            const entries = Object.entries(campaigns);
+            for (const [name, c] of entries) {
+                if (c.campaignId && String(c.campaignId) === raw) return { name, type: 'id' };
+            }
+            for (const [name] of entries) {
+                if (normName(name) === n) return { name, type: 'exact' };
+            }
+            if (n.length < 4) return null;
+            let best = null;
+            for (const [name] of entries) {
+                const cn = normName(name);
+                if (cn.length < 4) continue;
+                if (cn.includes(n) || n.includes(cn)) {
+                    const overlap = Math.min(cn.length, n.length);
+                    if (!best || overlap > best.overlap) best = { name, type: 'partial', overlap };
+                }
+            }
+            return best ? { name: best.name, type: best.type } : null;
+        }
+
+        function allocateAdSpend(skyeMetrics, ads) {
+            const metrics = skyeMetrics.map(m => ({ ...m, _platform: platformOf(m), _match: null }));
+            const report = { allocated: 0, totalAdSpend: 0, platforms: [] };
+
+            AD_PLATFORMS.forEach(p => {
+                const campaigns = (ads.campaigns && ads.campaigns[p.key + '_campaigns']) || {};
+                const platformSpend = Object.values(campaigns).reduce((sum, c) => sum + (c.spend || 0), 0);
+                const rows = metrics.filter(m => m._platform === p.key);
+                const info = { label: p.label, spend: platformSpend, matchedCampaigns: 0, totalCampaigns: Object.keys(campaigns).length, unmatchedSkye: [], noLeadCampaigns: [] };
+                report.totalAdSpend += platformSpend;
+
+                // Ad spend replaces Skye's own spend figure for rows from this platform
+                const groups = {};
+                rows.forEach(m => {
+                    m.marketing_spend = 0;
+                    const hit = findCampaign(m.campaign, campaigns);
+                    if (hit) {
+                        m._match = hit.type;
+                        m._adCampaign = hit.name;
+                        (groups[hit.name] = groups[hit.name] || []).push(m);
+                    } else {
+                        m._match = 'unmatched';
+                        info.unmatchedSkye.push(m.campaign || '(no campaign)');
+                    }
+                });
+
+                Object.entries(campaigns).forEach(([name, c]) => {
+                    const spend = c.spend || 0;
+                    const group = groups[name];
+                    if (group && group.length) {
+                        // Split across Skye rows by share of leads (equally if none have leads)
+                        info.matchedCampaigns++;
+                        const leads = group.map(m => formatNumber(m.total_leads || 0));
+                        const totalLeads = leads.reduce((a, b) => a + b, 0);
+                        group.forEach((m, i) => {
+                            m.marketing_spend += totalLeads > 0 ? spend * leads[i] / totalLeads : spend / group.length;
+                        });
+                        report.allocated += spend;
+                    } else if (spend > 0) {
+                        // Spend with no Skye leads still counts, shown as its own row
+                        info.noLeadCampaigns.push(name);
+                        metrics.push({
+                            channel: 'Paid', source: p.label, campaign: name,
+                            total_leads: 0, new_leads: 0, pending_leads: 0, total_sales: 0,
+                            lost_leads: 0, deleted_leads: 0, total_revenue: 0,
+                            marketing_spend: spend, _platform: p.key, _match: 'no-leads', _noLeads: true
+                        });
+                    }
+                });
+                report.platforms.push(info);
+            });
+
+            return { metrics, report };
+        }
+
+        function renderAllocation(allocation) {
+            const box = document.getElementById('allocationContainer');
+            if (!allocation) { box.innerHTML = ''; return; }
+            const r = allocation.report;
+            if (r.totalAdSpend === 0) { box.innerHTML = ''; return; }
+            const pct = (r.allocated / r.totalAdSpend * 100).toFixed(0);
+            const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const lines = r.platforms.filter(p => p.totalCampaigns > 0).map(p => {
+                let html = `<li><strong>${p.label}:</strong> ${p.matchedCampaigns} of ${p.totalCampaigns} campaigns matched to Skye`;
+                if (p.noLeadCampaigns.length) html += `<br><span style="color:#b45309;">Spend with no Skye leads:</span> ${p.noLeadCampaigns.map(esc).join(', ')}`;
+                if (p.unmatchedSkye.length) html += `<br><span style="color:#b45309;">Skye campaigns with no matching ${p.label} campaign:</span> ${[...new Set(p.unmatchedSkye)].map(esc).join(', ')}`;
+                return html + '</li>';
+            }).join('');
+            box.innerHTML = `
+                <details ${pct < 100 ? 'open' : ''}>
+                    <summary style="cursor: pointer; font-weight: 600;">Ad spend allocated to Skye campaigns: ${formatCurrency(r.allocated)} of ${formatCurrency(r.totalAdSpend)} (${pct}%)</summary>
+                    <ul style="margin: 10px 0 0 20px; line-height: 1.7; color: #444;">${lines}</ul>
+                    <p style="color: #666; font-size: 13px; margin-top: 8px;">Matched using each Skye row's UTM source (platform) and UTM campaign (campaign ID or name). Unmatched ad spend is still included in the totals as its own row.</p>
+                </details>`;
         }
 
         function renderKPIs(metrics) {
@@ -793,6 +913,14 @@
             });
         }
 
+        function matchBadge(m) {
+            const style = 'display:block; font-size: 11px; margin-top: 3px;';
+            if (m._match === 'partial') return `<span style="${style} color:#666;" title="Close name match">≈ ${m._adCampaign}</span>`;
+            if (m._match === 'unmatched') return `<span style="${style} color:#b45309;">⚠ no matching ad campaign</span>`;
+            if (m._match === 'no-leads') return `<span style="${style} color:#b45309;">⚠ ad spend, no Skye leads</span>`;
+            return '';
+        }
+
         function renderTable(metrics) {
             const tableContainer = document.getElementById('tableContainer');
             tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
@@ -837,7 +965,7 @@
                 row.innerHTML = `
                     <td>${metric.channel || 'N/A'}</td>
                     <td>${metric.source || 'N/A'}</td>
-                    <td>${metric.campaign || 'N/A'}</td>
+                    <td>${metric.campaign || 'N/A'}${matchBadge(metric)}</td>
                     <td>${totalLeads.toLocaleString()}</td>
                     <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.pending_leads || 0).toLocaleString()}</td>
