@@ -798,7 +798,7 @@
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
                         } else {
-                            y -= 4;
+                            y -= 8;
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'bottom';
                         }
@@ -867,7 +867,7 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            grace: '8%',
+                            grace: '15%',
                             ticks: {
                                 callback: function(value) {
                                     return value.toLocaleString();
@@ -907,11 +907,10 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            max: 100,
-                            ticks: { callback: v => v + '%' }
+                            max: 115, // headroom so labels on 100% bars stay clear of the legend
+                            ticks: { stepSize: 10, callback: v => v <= 100 ? v + '%' : '' }
                         }
-                    },
-                    layout: { padding: { top: 16 } }
+                    }
                 },
                 plugins: [valueLabelsPlugin]
             });
