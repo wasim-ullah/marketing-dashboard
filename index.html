@@ -189,6 +189,15 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         }
 
+        .cur {
+            font-size: 0.42em;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            opacity: 0.8;
+            margin-right: 5px;
+            vertical-align: 0.35em;
+        }
+
         .kpi-card h4 {
             display: flex;
             align-items: center;
@@ -405,13 +414,18 @@
             return parseFloat(value) || 0;
         }
 
-        // Format currency helper - AED (Dirhams)
-        function formatCurrency(value) {
+        // Amount in AED without a currency label (tables put "(AED)" in the column title)
+        function formatAmount(value) {
             const num = formatNumber(value);
-            return 'Dhs ' + new Intl.NumberFormat('en-US', {
+            return new Intl.NumberFormat('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             }).format(num || 0);
+        }
+
+        // Amount with a small "AED" tag in front, for cards
+        function formatCurrency(value) {
+            return `<span class="cur">AED</span>${formatAmount(value)}`;
         }
 
         // Login functionality
@@ -596,7 +610,7 @@
                     if (mins > 180) extra += ` <strong style="color: #b45309;">(check the script schedule in ${p.scriptHome || p.label})</strong>`;
                 }
                 if (account.note) extra += ` · ${account.note}`;
-                msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}${extra}</p>`;
+                msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to AED at 3.67' : ''}${extra}</p>`;
             }
 
             const campaigns = (d.campaigns && d.campaigns[p.key + '_campaigns']) || {};
@@ -621,15 +635,15 @@
             }
             tableDiv.innerHTML = `
                 <table>
-                    <thead><tr><th>Campaign</th><th>Spend</th><th>Clicks</th><th>Impressions</th><th>CPC</th></tr></thead>
+                    <thead><tr><th>Campaign</th><th>Spend (AED)</th><th>Clicks</th><th>Impressions</th><th>CPC (AED)</th></tr></thead>
                     <tbody>
                         ${rows.map(([name, c]) => `
                             <tr>
                                 <td>${name}</td>
-                                <td>${formatCurrency(c.spend)}</td>
+                                <td>${formatAmount(c.spend)}</td>
                                 <td>${c.clicks.toLocaleString()}</td>
                                 <td>${c.impressions.toLocaleString()}</td>
-                                <td>${formatCurrency(c.clicks > 0 ? c.spend / c.clicks : 0)}</td>
+                                <td>${formatAmount(c.clicks > 0 ? c.spend / c.clicks : 0)}</td>
                             </tr>`).join('')}
                     </tbody>
                 </table>`;
@@ -711,7 +725,7 @@
             const box = document.getElementById('platformContainer');
             const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
             const ratio = (a, b) => b > 0 ? a / b : null;
-            const money = (v) => v === null ? '-' : formatCurrency(v);
+            const money = (v) => v === null ? '-' : formatAmount(v);
             const line = (r, label, isTotal) => {
                 const cpl = ratio(r.spend, r.leads);
                 const cps = ratio(r.spend, r.sales);
@@ -721,11 +735,11 @@
                 const tag = isTotal ? 'th' : 'td';
                 return `<tr${isTotal ? ' style="background: #f8f9fa;"' : ''}>
                     <${tag} style="text-align: left;">${label}${isTotal ? '' : sources}</${tag}>
-                    <${tag}>${formatCurrency(r.spend)}</${tag}>
+                    <${tag}>${formatAmount(r.spend)}</${tag}>
                     <${tag}>${r.leads.toLocaleString()}</${tag}>
                     <${tag}>${r.newLeads.toLocaleString()}</${tag}>
                     <${tag}>${r.sales.toLocaleString()}</${tag}>
-                    <${tag}>${formatCurrency(r.revenue)}</${tag}>
+                    <${tag}>${formatAmount(r.revenue)}</${tag}>
                     <${tag}>${money(cpl)}</${tag}>
                     <${tag}>${money(cps)}</${tag}>
                     <${tag}>${conv === null ? '-' : (conv * 100).toFixed(2) + '%'}</${tag}>
@@ -736,8 +750,8 @@
                 <h3>Performance by Platform</h3>
                 <table>
                     <thead><tr>
-                        <th>Platform</th><th>Spend</th><th>Leads</th><th>New Leads</th><th>Sales</th><th>Revenue</th>
-                        <th>Cost/Lead</th><th>Cost/Sale</th><th>Conversion %</th><th>ROAS</th>
+                        <th>Platform</th><th>Spend (AED)</th><th>Leads</th><th>New Leads</th><th>Sales</th><th>Revenue (AED)</th>
+                        <th>Cost/Lead (AED)</th><th>Cost/Sale (AED)</th><th>Conversion %</th><th>ROAS</th>
                     </tr></thead>
                     <tbody>
                         ${cmp.list.map(r => line(r, r.label, false)).join('')}
@@ -972,7 +986,7 @@
                         <th>Sales</th>
                         <th>Lost</th>
                         <th>Deleted</th>
-                        <th>Revenue</th>
+                        <th>Revenue (AED)</th>
                         <th>Conversion %</th>
                     </tr>
                 </thead>
@@ -997,7 +1011,7 @@
                     <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.lost_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.deleted_leads || 0).toLocaleString()}</td>
-                    <td>${formatCurrency(metric.total_revenue || 0)}</td>
+                    <td>${formatAmount(metric.total_revenue || 0)}</td>
                     <td>${conversionRate.toFixed(2)}%</td>
                 `;
                 tbody.appendChild(row);
