@@ -5,6 +5,8 @@
  * - FACEBOOK_AD_ACCOUNT_ID
  * - BING_CLIENT_ID, BING_CLIENT_SECRET, BING_REFRESH_TOKEN (get it from /api/bing-auth)
  * - BING_DEVELOPER_TOKEN, BING_CUSTOMER_ID, BING_ACCOUNT_ID
+ *   (or, preferred: BING_INGEST_SECRET + a Vercel Blob store, fed by scripts/microsoft-ads-script.js)
+ * - Google Ads: BING_INGEST_SECRET + Vercel Blob, fed by scripts/google-ads-script.js
  */
 
 module.exports = async function handler(req, res) {
@@ -176,30 +178,10 @@ async function fetchFacebookAdsData(startDate, endDate) {
 }
 
 /**
- * Fetch Google Ads data
- * Placeholder for future implementation
+ * Fetch Google Ads data pushed by scripts/google-ads-script.js
  */
 async function fetchGoogleAdsData(startDate, endDate) {
-  try {
-    console.log('[Google] Google Ads integration pending');
-    // TODO: Implement Google Ads API integration
-    // Requires: google-ads-api library and proper credentials
-
-    return {
-      source: 'google_ads',
-      totalSpend: 0,
-      bySource: {},
-      error: 'Google Ads integration pending',
-    };
-  } catch (error) {
-    console.error('[Google] Ads API error:', error);
-    return {
-      source: 'google_ads',
-      totalSpend: 0,
-      bySource: {},
-      error: error.message,
-    };
-  }
+  return fetchViaScript('google', 'Google Ads', startDate, endDate);
 }
 
 /**
@@ -208,23 +190,28 @@ async function fetchGoogleAdsData(startDate, endDate) {
  */
 async function fetchBingAdsData(startDate, endDate) {
   // Preferred route: data pushed hourly by the Microsoft Ads script (no Azure needed)
-  if (process.env.BING_INGEST_SECRET) return fetchBingViaScript(startDate, endDate);
+  if (process.env.ADS_INGEST_SECRET || process.env.BING_INGEST_SECRET) return fetchViaScript('bing', 'Microsoft Ads', startDate, endDate);
   // Alternative route: Microsoft Advertising API (needs an Azure app + refresh token)
   return fetchBingViaApi(startDate, endDate);
 }
 
-async function fetchBingViaScript(startDate, endDate) {
+// Read spend that a platform's script pushed into storage (see lib/ingest-handler.js)
+async function fetchViaScript(platform, label, startDate, endDate) {
   const USD_TO_AED = 3.67;
+  const source = `${platform}_ads`;
   try {
-    const { readStore } = require('../lib/bing-store');
-    const store = await readStore();
+    const { readStore, ingestSecret } = require('../lib/ads-store');
+    if (!ingestSecret()) {
+      return { source, totalSpend: 0, bySource: {}, error: `${label} not connected yet (BING_INGEST_SECRET is not set)` };
+    }
+    const store = await readStore(platform);
     if (!store || !store.rows || store.rows.length === 0) {
-      return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: 'Waiting for the first data from the Microsoft Ads script. Run the script once in Microsoft Ads.' };
+      return { source, totalSpend: 0, bySource: {}, error: `Waiting for the first data from the ${label} script. Run the script once in ${label}.` };
     }
 
     const currency = store.account?.currency || 'AED';
     if (currency !== 'AED' && currency !== 'USD') {
-      throw new Error(`Bing account currency ${currency} is not supported (expected AED or USD)`);
+      throw new Error(`${label} account currency ${currency} is not supported (expected AED or USD)`);
     }
     const rate = currency === 'USD' ? USD_TO_AED : 1;
 
@@ -242,19 +229,18 @@ async function fetchBingViaScript(startDate, endDate) {
       totalSpend += spend;
     }
 
-    const dates = store.rows.map((r) => r.date).sort();
-    let note = null;
-    if (startDate < dates[0]) note = `Bing data only goes back to ${dates[0]}`;
+    const covered = store.coveredFrom || store.rows.map((r) => r.date).sort()[0];
+    const note = startDate < covered ? `${label} data only goes back to ${covered}` : null;
 
     return {
-      source: 'bing_ads',
+      source,
       totalSpend,
       bySource,
       account: { ...(store.account || {}), currency, updatedAt: store.updatedAt, note },
     };
   } catch (error) {
-    console.error('[Bing] Script data error:', error.message);
-    return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: error.message };
+    console.error(`[${platform}] Script data error:`, error.message);
+    return { source, totalSpend: 0, bySource: {}, error: error.message };
   }
 }
 
@@ -483,6 +469,7 @@ function combineAdsData(facebookData, googleData, bingData) {
     },
     facebookAccount: facebookData.account || null,
     bingAccount: bingData.account || null,
+    googleAccount: googleData.account || null,
     errors: {
       facebook: facebookData.error || null,
       google: googleData.error || null,

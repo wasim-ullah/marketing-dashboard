@@ -372,6 +372,13 @@
             <div id="fbCampaignsTable"></div>
         </div>
 
+        <div class="table-container" id="googleAdsSection">
+            <h3>Google Ad Spend</h3>
+            <div id="googleAdsMessage"></div>
+            <div id="googleKpiCards" class="kpi-grid"></div>
+            <div id="googleCampaignsTable"></div>
+        </div>
+
         <div class="table-container" id="bingAdsSection">
             <h3>Bing Ad Spend</h3>
             <div id="bingAdsMessage"></div>
@@ -522,7 +529,8 @@
         // Ad spend for Facebook and Bing (backend already converts to AED)
         const AD_PLATFORMS = [
             { key: 'facebook', label: 'Facebook', icon: '📘', prefix: 'fb' },
-            { key: 'bing', label: 'Bing', icon: '🔎', prefix: 'bing' }
+            { key: 'google', label: 'Google', icon: '🟢', prefix: 'google', scriptHome: 'Google Ads' },
+            { key: 'bing', label: 'Bing', icon: '🔎', prefix: 'bing', scriptHome: 'Microsoft Ads' }
         ];
 
         async function loadAdSpend(startDate, endDate) {
@@ -560,7 +568,7 @@
                     const mins = Math.round((Date.now() - new Date(account.updatedAt).getTime()) / 60000);
                     const ago = mins < 60 ? `${mins} min ago` : mins < 2880 ? `${Math.round(mins / 60)} hours ago` : `${Math.round(mins / 1440)} days ago`;
                     extra += ` · updated ${ago}`;
-                    if (mins > 180) extra += ' <strong style="color: #b45309;">(check the Microsoft Ads script schedule)</strong>';
+                    if (mins > 180) extra += ` <strong style="color: #b45309;">(check the script schedule in ${p.scriptHome || p.label})</strong>`;
                 }
                 if (account.note) extra += ` · ${account.note}`;
                 msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}${extra}</p>`;
