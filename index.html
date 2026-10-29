@@ -894,9 +894,7 @@
                         <th>Sales</th>
                         <th>Lost</th>
                         <th>Deleted</th>
-                        <th>Spend</th>
                         <th>Revenue</th>
-                        <th>Cost/Lead</th>
                         <th>Conversion %</th>
                     </tr>
                 </thead>
@@ -908,8 +906,6 @@
 
             metrics.forEach(metric => {
                 const totalLeads = formatNumber(metric.total_leads || 0);
-                const spend = formatNumber(metric.marketing_spend || 0);
-                const costPerLead = totalLeads > 0 ? spend / totalLeads : 0;
                 const conversionRate = totalLeads > 0 ? (formatNumber(metric.total_sales || 0) / totalLeads) * 100 : 0;
 
                 const row = document.createElement('tr');
@@ -923,9 +919,7 @@
                     <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.lost_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.deleted_leads || 0).toLocaleString()}</td>
-                    <td>${formatCurrency(spend)}</td>
                     <td>${formatCurrency(metric.total_revenue || 0)}</td>
-                    <td>${formatCurrency(costPerLead)}</td>
                     <td>${conversionRate.toFixed(2)}%</td>
                 `;
                 tbody.appendChild(row);
