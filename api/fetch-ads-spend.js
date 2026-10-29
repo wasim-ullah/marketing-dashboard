@@ -207,6 +207,58 @@ async function fetchGoogleAdsData(startDate, endDate) {
  * Placeholder for future implementation
  */
 async function fetchBingAdsData(startDate, endDate) {
+  // Preferred route: data pushed hourly by the Microsoft Ads script (no Azure needed)
+  if (process.env.BING_INGEST_SECRET) return fetchBingViaScript(startDate, endDate);
+  // Alternative route: Microsoft Advertising API (needs an Azure app + refresh token)
+  return fetchBingViaApi(startDate, endDate);
+}
+
+async function fetchBingViaScript(startDate, endDate) {
+  const USD_TO_AED = 3.67;
+  try {
+    const { readStore } = require('../lib/bing-store');
+    const store = await readStore();
+    if (!store || !store.rows || store.rows.length === 0) {
+      return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: 'Waiting for the first data from the Microsoft Ads script. Run the script once in Microsoft Ads.' };
+    }
+
+    const currency = store.account?.currency || 'AED';
+    if (currency !== 'AED' && currency !== 'USD') {
+      throw new Error(`Bing account currency ${currency} is not supported (expected AED or USD)`);
+    }
+    const rate = currency === 'USD' ? USD_TO_AED : 1;
+
+    let totalSpend = 0;
+    const bySource = {};
+    for (const r of store.rows) {
+      if (r.date < startDate || r.date > endDate) continue;
+      const name = r.campaign || `Campaign ${r.campaignId}`;
+      bySource[name] = bySource[name] || { spend: 0, clicks: 0, impressions: 0, conversions: 0, campaignId: r.campaignId };
+      const spend = r.spend * rate;
+      bySource[name].spend += spend;
+      bySource[name].clicks += r.clicks;
+      bySource[name].impressions += r.impressions;
+      bySource[name].conversions += r.conversions;
+      totalSpend += spend;
+    }
+
+    const dates = store.rows.map((r) => r.date).sort();
+    let note = null;
+    if (startDate < dates[0]) note = `Bing data only goes back to ${dates[0]}`;
+
+    return {
+      source: 'bing_ads',
+      totalSpend,
+      bySource,
+      account: { ...(store.account || {}), currency, updatedAt: store.updatedAt, note },
+    };
+  } catch (error) {
+    console.error('[Bing] Script data error:', error.message);
+    return { source: 'bing_ads', totalSpend: 0, bySource: {}, error: error.message };
+  }
+}
+
+async function fetchBingViaApi(startDate, endDate) {
   const {
     BING_CLIENT_ID, BING_CLIENT_SECRET, BING_REFRESH_TOKEN,
     BING_DEVELOPER_TOKEN, BING_CUSTOMER_ID, BING_ACCOUNT_ID,

@@ -7,7 +7,18 @@
     "dev": "vercel dev",
     "build": "echo 'No build required for static site with serverless functions'"
   },
-  "keywords": ["ads", "dashboard", "facebook", "buyanyinsurance"],
+  "keywords": [
+    "ads",
+    "dashboard",
+    "facebook",
+    "buyanyinsurance"
+  ],
   "author": "Wasim Ullah",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@vercel/blob": "2.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

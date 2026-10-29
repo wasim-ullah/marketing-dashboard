@@ -555,7 +555,15 @@
             if (err) {
                 msg.innerHTML = `<div class="error">${p.label}: ${err}</div>`;
             } else if (account) {
-                msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}</p>`;
+                let extra = '';
+                if (account.updatedAt) {
+                    const mins = Math.round((Date.now() - new Date(account.updatedAt).getTime()) / 60000);
+                    const ago = mins < 60 ? `${mins} min ago` : mins < 2880 ? `${Math.round(mins / 60)} hours ago` : `${Math.round(mins / 1440)} days ago`;
+                    extra += ` · updated ${ago}`;
+                    if (mins > 180) extra += ' <strong style="color: #b45309;">(check the Microsoft Ads script schedule)</strong>';
+                }
+                if (account.note) extra += ` · ${account.note}`;
+                msg.innerHTML = `<p style="color: #666; margin-bottom: 15px;">Ad account: <strong>${account.name || '-'}</strong> (${account.id}) · billed in ${account.currency || '-'}${account.currency === 'USD' ? ', converted to Dhs at 3.67' : ''}${extra}</p>`;
             }
 
             const campaigns = (d.campaigns && d.campaigns[p.key + '_campaigns']) || {};
