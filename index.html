@@ -365,12 +365,12 @@
         <div class="date-selector">
             <h3>Select Date Range</h3>
             <div class="date-controls">
-                <button class="preset-btn active" onclick="setDateRange(7)">Last 7 Days</button>
-                <button class="preset-btn" onclick="setDateRange(30)">Last 30 Days</button>
-                <button class="preset-btn" onclick="setDateRange(90)">Last 90 Days</button>
+                <button class="preset-btn active" data-offset="0" onclick="setMonthRange(0)">This Month</button>
+                <button class="preset-btn" data-offset="1" onclick="setMonthRange(1)">Last Month</button>
+                <button class="preset-btn" data-offset="2" onclick="setMonthRange(2)">Previous Month</button>
                 <span style="color: #666; font-weight: 500;">Or select custom range:</span>
-                <input type="date" id="dateFrom" class="date-input" onchange="loadDashboard()">
-                <input type="date" id="dateTo" class="date-input" onchange="loadDashboard()">
+                <input type="date" id="dateFrom" class="date-input" min="2026-01-01" onchange="onCustomDate()">
+                <input type="date" id="dateTo" class="date-input" min="2026-01-01" onchange="onCustomDate()">
             </div>
         </div>
 
@@ -466,18 +466,17 @@
         }
 
         // Initialize dashboard
+        let dashboardStarted = false;
+
         function initializeDashboard() {
-            // Set default date range (last 7 days)
-            const today = new Date();
-            const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            // Default: this month so far
+            setMonthRange(0);
 
-            document.getElementById('dateTo').value = formatDate(today);
-            document.getElementById('dateFrom').value = formatDate(sevenDaysAgo);
-
-            loadDashboard();
-
-            // Auto-refresh every 5 minutes
-            setInterval(loadDashboard, 5 * 60 * 1000);
+            // Auto-refresh every 5 minutes; a month preset is re-applied so it stays current
+            if (!dashboardStarted) {
+                dashboardStarted = true;
+                setInterval(() => activeMonthOffset === null ? loadDashboard() : setMonthRange(activeMonthOffset), 5 * 60 * 1000);
+            }
         }
 
         function formatDate(date) {
@@ -487,19 +486,53 @@
             return `${year}-${month}-${day}`;
         }
 
-        function setDateRange(days) {
+        // Month presets: 0 = this month (to today), 1 = last month, 2 = the month before that
+        let activeMonthOffset = 0;
+
+        function monthRange(offset) {
             const today = new Date();
-            const startDate = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+            const start = new Date(today.getFullYear(), today.getMonth() - offset, 1);
+            const end = offset === 0 ? today : new Date(today.getFullYear(), today.getMonth() - offset + 1, 0);
+            return { start, end };
+        }
 
-            document.getElementById('dateTo').value = formatDate(today);
-            document.getElementById('dateFrom').value = formatDate(startDate);
-
-            // Update active button
+        function updatePresetLabels() {
             document.querySelectorAll('.preset-btn').forEach(btn => {
-                btn.classList.remove('active');
+                const offset = Number(btn.dataset.offset);
+                const name = monthRange(offset).start.toLocaleString('en-US', { month: 'short' });
+                const label = ['This Month', 'Last Month', 'Previous Month'][offset];
+                btn.innerHTML = `${label} <span style="opacity: 0.7; font-weight: 400;">(${name})</span>`;
             });
-            event.target.classList.add('active');
+        }
 
+        function setActivePreset(offset) {
+            activeMonthOffset = offset;
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.toggle('active', offset !== null && Number(btn.dataset.offset) === offset);
+            });
+        }
+
+        function setMonthRange(offset) {
+            const { start, end } = monthRange(offset);
+            const today = formatDate(new Date());
+            document.getElementById('dateFrom').value = formatDate(start);
+            document.getElementById('dateTo').value = formatDate(end);
+            // The API rejects future dates
+            document.getElementById('dateFrom').max = today;
+            document.getElementById('dateTo').max = today;
+            updatePresetLabels();
+            setActivePreset(offset);
+            loadDashboard();
+        }
+
+        function onCustomDate() {
+            setActivePreset(null);
+            const from = document.getElementById('dateFrom').value;
+            const to = document.getElementById('dateTo').value;
+            if (from && to && from > to) {
+                showMessage('Start date must be on or before end date', 'error');
+                return;
+            }
             loadDashboard();
         }
 
