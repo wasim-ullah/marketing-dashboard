@@ -664,7 +664,9 @@
                 source: cleanField(source.utm_source),
                 campaign: cleanField(source.utm_campaign),
                 language: cleanField(source.language),
-                ...source.metrics
+                ...source.metrics,
+                // The API's total_leads includes deleted leads; Skye's own reports leave them out
+                total_leads: Math.max(0, formatNumber(source.metrics?.total_leads || 0) - formatNumber(source.metrics?.deleted_leads || 0))
             }));
             return metrics;
         }
@@ -702,7 +704,7 @@
         }
 
         function buildPlatformComparison(skyeMetrics, ads) {
-            const blank = () => ({ spend: 0, leads: 0, newLeads: 0, sales: 0, revenue: 0, sources: new Set() });
+            const blank = () => ({ spend: 0, leads: 0, sales: 0, revenue: 0, sources: new Set() });
             const rows = {};
             AD_PLATFORMS.forEach(p => {
                 rows[p.key] = { ...blank(), label: `${p.icon}${p.label}`, spend: (ads && ads.spend && ads.spend[p.key]) || 0, adSpendLoaded: !!ads };
@@ -713,18 +715,16 @@
                 const key = platformOf(m) || 'other';
                 const r = rows[key];
                 r.leads += formatNumber(m.total_leads || 0);
-                r.newLeads += formatNumber(m.new_leads || 0);
                 r.sales += formatNumber(m.total_sales || 0);
                 r.revenue += formatNumber(m.total_revenue || 0);
                 if (m.source) r.sources.add(m.source);
-                if (key === 'other') r.spend += formatNumber(m.marketing_spend || 0); // Skye's own spend for non-ad sources
             });
 
             const list = [...AD_PLATFORMS.map(p => rows[p.key]), rows.other];
             const total = list.reduce((t, r) => ({
-                spend: t.spend + r.spend, leads: t.leads + r.leads, newLeads: t.newLeads + r.newLeads,
+                spend: t.spend + r.spend, leads: t.leads + r.leads,
                 sales: t.sales + r.sales, revenue: t.revenue + r.revenue
-            }), { spend: 0, leads: 0, newLeads: 0, sales: 0, revenue: 0 });
+            }), { spend: 0, leads: 0, sales: 0, revenue: 0 });
             return { list, total };
         }
 
@@ -744,7 +744,6 @@
                     <${tag} style="text-align: left;">${label}${isTotal ? '' : sources}</${tag}>
                     <${tag}>${formatAmount(r.spend)}</${tag}>
                     <${tag}>${r.leads.toLocaleString()}</${tag}>
-                    <${tag}>${r.newLeads.toLocaleString()}</${tag}>
                     <${tag}>${r.sales.toLocaleString()}</${tag}>
                     <${tag}>${formatAmount(r.revenue)}</${tag}>
                     <${tag}>${money(cpl)}</${tag}>
@@ -757,7 +756,7 @@
                 <h3>Performance by Platform</h3>
                 <table>
                     <thead><tr>
-                        <th>Platform</th><th>Spend (AED)</th><th>Leads</th><th>New Leads</th><th>Sales</th><th>Revenue (AED)</th>
+                        <th>Platform</th><th>Spend (AED)</th><th>Leads</th><th>Sales</th><th>Revenue (AED)</th>
                         <th>Cost/Lead (AED)</th><th>Cost/Sale (AED)</th><th>Conversion %</th><th>ROAS</th>
                     </tr></thead>
                     <tbody>
@@ -765,41 +764,31 @@
                         ${line(cmp.total, 'Total', true)}
                     </tbody>
                 </table>
-                <p style="color: #666; font-size: 13px; margin-top: 10px;">Spend for Facebook, Google and Bing comes from each ad platform; leads, sales and revenue come from Skye, grouped by UTM source. "Other sources" uses Skye's own spend figure.</p>`;
+                <p style="color: #666; font-size: 13px; margin-top: 10px;">Spend for Facebook, Google and Bing comes from each ad platform; leads, sales and revenue come from Skye, grouped by UTM source. Leads exclude deleted leads.</p>`;
         }
 
-        // spendOverride: total ad platform spend + Skye spend for other sources
-        function renderKPIs(metrics, spendOverride) {
+        // adSpend: total Facebook + Google + Bing spend (null if ad data didn't load)
+        function renderKPIs(metrics, adSpend) {
             const kpiContainer = document.getElementById('kpiCards');
             kpiContainer.innerHTML = '';
 
             // Calculate aggregated KPIs
             let totalLeads = 0;
-            let deletedLeads = 0;
             let totalSales = 0;
-            let totalSpend = 0;
             let totalRevenue = 0;
 
             metrics.forEach(metric => {
                 totalLeads += formatNumber(metric.total_leads || 0);
-                deletedLeads += formatNumber(metric.deleted_leads || 0);
                 totalSales += formatNumber(metric.total_sales || 0);
-                totalSpend += formatNumber(metric.marketing_spend || 0);
                 totalRevenue += formatNumber(metric.total_revenue || 0);
             });
 
             const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
 
             const kpis = [
-                {
-                    title: 'Total Leads',
-                    value: totalLeads,
-                    subvalue: deletedLeads,
-                    sublabel: 'Deleted',
-                    icon: uiIcon('users')
-                },
+                { title: 'Total Leads', value: totalLeads, icon: uiIcon('users') },
                 { title: 'Sales', value: totalSales, icon: uiIcon('sales') },
-                { title: 'Marketing Spend', value: formatCurrency(spendOverride ?? totalSpend), icon: uiIcon('wallet') },
+                { title: 'Marketing Spend', value: adSpend === null ? '-' : formatCurrency(adSpend), icon: uiIcon('wallet') },
                 { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue') },
                 { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: uiIcon('target') }
             ];
@@ -812,7 +801,7 @@
                     <div class="value">${typeof kpi.value === 'number' ? kpi.value.toLocaleString() : kpi.value}</div>
                 `;
 
-                // Add sub-metric if it exists (for deleted leads)
+                // Add sub-metric if the card has one
                 if (kpi.subvalue !== undefined) {
                     cardContent += `
                         <div class="sub-metric">
@@ -985,11 +974,9 @@
                         <th>Source</th>
                         <th>Campaign</th>
                         <th>Total Leads</th>
-                        <th>New Leads</th>
                         <th>Pending</th>
                         <th>Sales</th>
                         <th>Lost</th>
-                        <th>Deleted</th>
                         <th>Revenue (AED)</th>
                         <th>Conversion %</th>
                     </tr>
@@ -1010,11 +997,9 @@
                     <td>${metric.source || 'N/A'}</td>
                     <td>${metric.campaign || 'N/A'}</td>
                     <td>${totalLeads.toLocaleString()}</td>
-                    <td>${formatNumber(metric.new_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.pending_leads || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.total_sales || 0).toLocaleString()}</td>
                     <td>${formatNumber(metric.lost_leads || 0).toLocaleString()}</td>
-                    <td>${formatNumber(metric.deleted_leads || 0).toLocaleString()}</td>
                     <td>${formatAmount(metric.total_revenue || 0)}</td>
                     <td>${conversionRate.toFixed(2)}%</td>
                 `;
