@@ -559,7 +559,6 @@
         // Line icons from Lucide (lucide.dev, ISC licence), white on a translucent chip
         const UI_ICONS = {
             users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /> <path d="M16 3.128a4 4 0 0 1 0 7.744" /> <path d="M22 21v-2a4 4 0 0 0-3-3.87" /> <circle cx="9" cy="7" r="4" />',
-            userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /> <circle cx="9" cy="7" r="4" /> <line x1="19" x2="19" y1="8" y2="14" /> <line x1="22" x2="16" y1="11" y2="11" />',
             sales: '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /> <path d="m16 9-5.5 5.5L8 12" />',
             wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" /> <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />',
             revenue: '<path d="M16 7h6v6" /> <path d="m22 7-8.5 8.5-5-5L2 17" />',
@@ -650,13 +649,21 @@
         }
 
         // Transform API response to flat metrics array
+        // The API sometimes returns repeated values joined by commas
+        // (e.g. utm_source "google,google,google,google"); collapse them to one value
+        function cleanField(value) {
+            if (value === null || value === undefined) return value;
+            const parts = [...new Set(String(value).split(',').map(v => v.trim()).filter(Boolean))];
+            return parts.length ? parts.join(', ') : value;
+        }
+
         function transformApiResponse(apiData) {
             const sources = apiData.data?.sources || [];
             const metrics = sources.map(source => ({
-                channel: source.channel,
-                source: source.utm_source,
-                campaign: source.utm_campaign,
-                language: source.language,
+                channel: cleanField(source.channel),
+                source: cleanField(source.utm_source),
+                campaign: cleanField(source.utm_campaign),
+                language: cleanField(source.language),
                 ...source.metrics
             }));
             return metrics;
@@ -727,8 +734,8 @@
             const ratio = (a, b) => b > 0 ? a / b : null;
             const money = (v) => v === null ? '-' : formatAmount(v);
             const line = (r, label, isTotal) => {
-                const cpl = ratio(r.spend, r.leads);
-                const cps = ratio(r.spend, r.sales);
+                const cpl = r.spend > 0 ? ratio(r.spend, r.leads) : null;
+                const cps = r.spend > 0 ? ratio(r.spend, r.sales) : null;
                 const conv = ratio(r.sales, r.leads);
                 const roas = ratio(r.revenue, r.spend);
                 const sources = r.sources && r.sources.size ? `<span style="display:block; font-size: 11px; color: #888;">UTM source: ${[...r.sources].map(esc).join(', ')}</span>` : '';
@@ -769,7 +776,6 @@
             // Calculate aggregated KPIs
             let totalLeads = 0;
             let deletedLeads = 0;
-            let newLeads = 0;
             let totalSales = 0;
             let totalSpend = 0;
             let totalRevenue = 0;
@@ -777,7 +783,6 @@
             metrics.forEach(metric => {
                 totalLeads += formatNumber(metric.total_leads || 0);
                 deletedLeads += formatNumber(metric.deleted_leads || 0);
-                newLeads += formatNumber(metric.new_leads || 0);
                 totalSales += formatNumber(metric.total_sales || 0);
                 totalSpend += formatNumber(metric.marketing_spend || 0);
                 totalRevenue += formatNumber(metric.total_revenue || 0);
@@ -793,7 +798,6 @@
                     sublabel: 'Deleted',
                     icon: uiIcon('users')
                 },
-                { title: 'New Leads', value: newLeads, icon: uiIcon('userPlus') },
                 { title: 'Sales', value: totalSales, icon: uiIcon('sales') },
                 { title: 'Marketing Spend', value: formatCurrency(spendOverride ?? totalSpend), icon: uiIcon('wallet') },
                 { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue') },
