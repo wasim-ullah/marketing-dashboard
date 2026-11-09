@@ -1077,9 +1077,10 @@
                     plugins: [valueLabelsPlugin]
                 });
             };
-            make('paidMoneyChart', 'Spend vs Revenue by Channel (AED)', [
+            make('paidMoneyChart', 'Spend, Revenue and BAI Split by Channel (AED)', [
                 { label: 'Spend', data: rows.map(r => adsLoaded ? r.spend : 0), backgroundColor: 'rgba(102, 126, 234, 0.75)', borderColor: 'rgb(102, 126, 234)', borderWidth: 2 },
-                { label: 'Revenue', data: rows.map(r => r.revenue), backgroundColor: 'rgba(21, 128, 61, 0.6)', borderColor: 'rgb(21, 128, 61)', borderWidth: 2 }
+                { label: 'Revenue', data: rows.map(r => r.revenue), backgroundColor: 'rgba(21, 128, 61, 0.6)', borderColor: 'rgb(21, 128, 61)', borderWidth: 2 },
+                { label: 'BAI Split', data: rows.map(r => r.baiSplit), backgroundColor: 'rgba(217, 119, 6, 0.6)', borderColor: 'rgb(217, 119, 6)', borderWidth: 2 }
             ], v => Math.round(v).toLocaleString());
             make('paidCountChart', 'Leads vs Sales by Channel', [
                 { label: 'Leads', data: rows.map(r => r.leads), backgroundColor: 'rgba(102, 126, 234, 0.75)', borderColor: 'rgb(102, 126, 234)', borderWidth: 2 },
