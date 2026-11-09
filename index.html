@@ -174,6 +174,30 @@
             font-size: 14px;
         }
 
+        /* Section headings and written summary */
+        .section-title {
+            display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+            margin: 40px 0 18px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb;
+        }
+        .section-title span { font-size: 22px; font-weight: 700; color: #1f2937; }
+        .section-title small { font-size: 13px; color: #6b7280; }
+        .section-title.paid-title { margin-top: 10px; border-bottom-color: #667eea; }
+        .summary-card {
+            background: #fff; border-radius: 12px; border-left: 5px solid #667eea;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06); padding: 22px 26px; margin-bottom: 20px;
+            line-height: 1.6; color: #374151;
+        }
+        .summary-card:empty { display: none; }
+        .summary-card h3 { font-size: 18px; color: #1f2937; margin-bottom: 2px; }
+        .summary-card .period { font-size: 13px; color: #6b7280; margin-bottom: 12px; }
+        .summary-card .lead { font-size: 16px; margin-bottom: 10px; }
+        .summary-card ul { margin: 6px 0 0 20px; }
+        .summary-card li { margin-bottom: 6px; }
+        .summary-card .note { font-size: 12.5px; color: #6b7280; margin-top: 10px; }
+        .up-good, .down-good { color: #15803d; font-weight: 600; }
+        .up-bad, .down-bad { color: #b91c1c; font-weight: 600; }
+        .flat { color: #6b7280; font-weight: 600; }
+
         /* Paid ads boxes at the top */
         .paid-section { margin-bottom: 30px; }
         .paid-section h3 { font-size: 18px; color: #333; margin-bottom: 15px; }
@@ -411,11 +435,13 @@
             </div>
         </div>
 
+        <div id="summaryContainer" class="summary-card"></div>
+
+        <!-- ===== PAID ADS (main focus) ===== -->
+        <div class="section-title paid-title"><span>Paid Ads</span><small>Facebook, Google and Bing: spend from the ad platforms, leads and sales from Skye</small></div>
         <div id="paidCards" class="paid-section"></div>
-        <div id="kpiCards" class="kpi-grid"></div>
-        <div id="chartsContainer" class="charts-grid"></div>
-        <div id="platformContainer" class="table-container"></div>
-        <div id="tableContainer" class="table-container"></div>
+        <div id="paidCharts" class="charts-grid"></div>
+        <div id="paidTable" class="table-container"></div>
 
         <div class="table-container" id="fbAdsSection">
             <h3 id="fbAdsHeading">Facebook Ad Spend</h3>
@@ -437,6 +463,17 @@
             <div id="bingKpiCards" class="kpi-grid"></div>
             <div id="bingCampaignsTable"></div>
         </div>
+
+        <!-- ===== UNPAID ===== -->
+        <div class="section-title"><span>Unpaid Sources</span><small>Organic, referrals, calls, WhatsApp and other sources with no ad spend</small></div>
+        <div id="unpaidCards" class="kpi-grid"></div>
+        <div id="unpaidCharts" class="charts-grid"></div>
+        <div id="unpaidTable" class="table-container"></div>
+
+        <!-- ===== COMBINED ===== -->
+        <div class="section-title"><span>Combined Performance</span><small>Paid and unpaid together</small></div>
+        <div id="kpiCards" class="kpi-grid"></div>
+        <div id="platformContainer" class="table-container"></div>
     </div>
 
     <script>
@@ -459,6 +496,11 @@
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             }).format(num || 0);
+        }
+
+        // Per-unit costs (cost per lead, cost per sale) always show two decimals
+        function formatCost(value) {
+            return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(formatNumber(value) || 0);
         }
 
         // Amount with a small "AED" tag in front, for cards
@@ -585,10 +627,13 @@
 
             AD_PLATFORMS.forEach(p => { document.getElementById(p.prefix + 'AdsMessage').innerHTML = ''; });
 
-            // Skye KPIs and ad spend load together so spend can be allocated to Skye campaigns
-            const [kpiResult, adsResult] = await Promise.allSettled([
+            // Current period plus the period before it (for the written summary's comparison)
+            const prevRange = previousPeriod(dateFrom, dateTo);
+            const [kpiResult, adsResult, prevKpiResult, prevAdsResult] = await Promise.allSettled([
                 postJson('/api/fetch-dashboard', { dateFrom, dateTo }),
-                postJson('/api/fetch-ads-spend', { startDate: dateFrom, endDate: dateTo })
+                postJson('/api/fetch-ads-spend', { startDate: dateFrom, endDate: dateTo }),
+                prevRange ? postJson('/api/fetch-dashboard', { dateFrom: prevRange.from, dateTo: prevRange.to }) : Promise.reject(new Error('no previous period')),
+                prevRange ? postJson('/api/fetch-ads-spend', { startDate: prevRange.from, endDate: prevRange.to }) : Promise.reject(new Error('no previous period'))
             ]);
 
             let ads = null;
@@ -612,7 +657,12 @@
                 showMessage(`Error: ${data.error}`, 'error');
                 return;
             }
-            renderDashboard(data, ads);
+            let prev = null;
+            if (prevRange && prevKpiResult.status === 'fulfilled' && !prevKpiResult.value.error) {
+                const prevAds = prevAdsResult.status === 'fulfilled' && prevAdsResult.value.data ? prevAdsResult.value.data : null;
+                prev = { range: prevRange, api: prevKpiResult.value, ads: prevAds };
+            }
+            renderDashboard(data, ads, { from: dateFrom, to: dateTo }, prev);
             showMessage('Dashboard updated successfully', 'success');
         }
 
@@ -742,15 +792,35 @@
             return metrics;
         }
 
-        function renderDashboard(apiResponse, ads) {
+        // A Skye row is paid if it comes from an ad platform, or Skye marks its channel as paid
+        function isPaid(m) {
+            return !!platformOf(m) || /\bpaid\b/i.test(String(m.channel || ''));
+        }
+
+        function renderDashboard(apiResponse, ads, range, prev) {
             try {
                 const metrics = transformApiResponse(apiResponse);
+                const paidRows = metrics.filter(isPaid);
+                const unpaidRows = metrics.filter(m => !isPaid(m));
                 const comparison = buildPlatformComparison(metrics, ads);
-                renderKPIs(metrics, ads ? comparison.total.spend : null);
-                renderCharts(metrics);
-                renderPaidCards(comparison, !!ads);
+
+                // Written summary
+                const prevStats = prev ? periodStats(transformApiResponse(prev.api), prev.ads) : null;
+                renderSummary(periodStats(metrics, ads), prevStats, range, prev ? prev.range : null, ads);
+
+                // Paid
+                renderPaidCards(comparison, !!ads, aggregate(paidRows.filter(m => !platformOf(m))), paidRows.filter(m => !platformOf(m)));
+                renderPaidCharts(comparison, !!ads);
+                renderTable(paidRows, 'paidTable', 'Paid Campaigns (Skye leads and sales)');
+
+                // Unpaid
+                renderKPIs(unpaidRows, undefined, 'unpaidCards');
+                renderCharts(unpaidRows, 'unpaidCharts', 'unpaid');
+                renderTable(unpaidRows, 'unpaidTable', 'Unpaid Sources Detail');
+
+                // Combined
+                renderKPIs(metrics, ads ? comparison.total.spend : null, 'kpiCards');
                 renderPlatformComparison(comparison);
-                renderTable(metrics);
             } catch (error) {
                 showMessage(`Error rendering dashboard: ${error.message}`, 'error');
                 console.error('Render error:', error);
@@ -781,7 +851,7 @@
             AD_PLATFORMS.forEach(p => {
                 rows[p.key] = { ...blank(), label: `${p.icon}${p.label}`, spend: (ads && ads.spend && ads.spend[p.key]) || 0, adSpendLoaded: !!ads };
             });
-            rows.other = { ...blank(), label: 'Other sources (organic, direct, etc.)', other: true };
+            rows.other = { ...blank(), label: 'Unpaid and other sources', other: true };
 
             skyeMetrics.forEach(m => {
                 const key = platformOf(m) || 'other';
@@ -800,15 +870,218 @@
             return { list, total };
         }
 
+        // ---- Totals helpers ----
+        function aggregate(rows) {
+            return rows.reduce((t, m) => ({
+                leads: t.leads + formatNumber(m.total_leads || 0),
+                sales: t.sales + formatNumber(m.total_sales || 0),
+                revenue: t.revenue + formatNumber(m.total_revenue || 0)
+            }), { leads: 0, sales: 0, revenue: 0 });
+        }
+
+        // Paid / unpaid / per-platform totals for one period
+        function periodStats(metrics, ads) {
+            const platforms = {};
+            AD_PLATFORMS.forEach(p => {
+                platforms[p.key] = { ...aggregate(metrics.filter(m => platformOf(m) === p.key)), spend: (ads && ads.spend && ads.spend[p.key]) || 0 };
+            });
+            const paid = { ...aggregate(metrics.filter(isPaid)), spend: Object.values(platforms).reduce((a, p) => a + p.spend, 0) };
+            const unpaidRows = metrics.filter(m => !isPaid(m));
+            const unpaid = aggregate(unpaidRows);
+            const bySource = {};
+            unpaidRows.forEach(m => {
+                const k = m.source || 'unknown';
+                bySource[k] = bySource[k] || { leads: 0, sales: 0 };
+                bySource[k].leads += formatNumber(m.total_leads || 0);
+                bySource[k].sales += formatNumber(m.total_sales || 0);
+            });
+            const topUnpaid = Object.entries(bySource).sort((a, b) => b[1].leads - a[1].leads)[0] || null;
+            return { platforms, paid, unpaid, topUnpaid, adsLoaded: !!ads };
+        }
+
+        // Period to compare against: same days of the previous month when the range starts
+        // on the 1st (a whole month counts as the whole previous month), otherwise the
+        // same number of days immediately before.
+        function previousPeriod(from, to) {
+            const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+            const f = parse(from), t = parse(to);
+            const lastDay = (y, m) => new Date(y, m + 1, 0).getDate();
+            let pf, pt;
+            if (f.getDate() === 1 && f.getMonth() === t.getMonth() && f.getFullYear() === t.getFullYear()) {
+                pf = new Date(f.getFullYear(), f.getMonth() - 1, 1);
+                const prevLast = lastDay(pf.getFullYear(), pf.getMonth());
+                const wholeMonth = t.getDate() === lastDay(t.getFullYear(), t.getMonth());
+                pt = new Date(pf.getFullYear(), pf.getMonth(), wholeMonth ? prevLast : Math.min(t.getDate(), prevLast));
+            } else {
+                const days = Math.round((t - f) / 86400000) + 1;
+                pt = new Date(f.getFullYear(), f.getMonth(), f.getDate() - 1);
+                pf = new Date(pt.getFullYear(), pt.getMonth(), pt.getDate() - days + 1);
+            }
+            const out = { from: formatDate(pf), to: formatDate(pt) };
+            return out.from < '2026-01-01' ? null : out; // the API has no data before 2026
+        }
+
+        function rangeLabel(from, to) {
+            const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+            const f = parse(from), t = parse(to);
+            const mon = (d) => d.toLocaleString('en-US', { month: 'short' });
+            if (from === to) return `${f.getDate()} ${mon(f)} ${f.getFullYear()}`;
+            if (f.getMonth() === t.getMonth() && f.getFullYear() === t.getFullYear()) return `${f.getDate()}–${t.getDate()} ${mon(t)} ${t.getFullYear()}`;
+            if (f.getFullYear() === t.getFullYear()) return `${f.getDate()} ${mon(f)} – ${t.getDate()} ${mon(t)} ${t.getFullYear()}`;
+            return `${f.getDate()} ${mon(f)} ${f.getFullYear()} – ${t.getDate()} ${mon(t)} ${t.getFullYear()}`;
+        }
+
+        // ---- Written summary ("Where things stand") ----
+        function renderSummary(cur, prev, range, prevRange, ads) {
+            const box = document.getElementById('summaryContainer');
+            const aed = (v) => `AED ${formatAmount(Math.round(v))}`;
+            const aed2 = (v) => `AED ${formatCost(v)}`;
+            const pct = (a, b) => b > 0 ? a / b * 100 : null;
+            const cpl = (x) => x.spend > 0 && x.leads > 0 ? x.spend / x.leads : null;
+            const roas = (x) => x.spend > 0 ? x.revenue / x.spend : null;
+            const conv = (x) => x.leads > 0 ? x.sales / x.leads * 100 : null;
+            // "up 12%" coloured by whether the move is good (higherIsGood) or bad
+            const change = (now, before, higherIsGood = true) => {
+                if (before === null || before === undefined || now === null) return null;
+                if (before === 0) return now === 0 ? '<span class="flat">unchanged</span>' : null;
+                const d = (now - before) / before * 100;
+                if (Math.abs(d) < 1) return '<span class="flat">flat</span>';
+                const up = d > 0;
+                const cls = up === higherIsGood ? (up ? 'up-good' : 'down-good') : (up ? 'up-bad' : 'down-bad');
+                return `<span class="${cls}">${up ? 'up' : 'down'} ${Math.abs(d).toFixed(0)}%</span>`;
+            };
+
+            const P = cur.paid;
+            const today = formatDate(new Date());
+            const inProgress = range.to >= today;
+            let html = `<h3>Where things stand</h3>
+                <div class="period">${rangeLabel(range.from, range.to)}${inProgress ? ' (in progress)' : ''}${prev ? ` · compared with ${rangeLabel(prevRange.from, prevRange.to)}` : ''}</div>`;
+
+            // Headline
+            if (!cur.adsLoaded) {
+                html += `<p class="lead">Paid ads brought <strong>${P.leads.toLocaleString()} leads</strong> and <strong>${P.sales.toLocaleString()} sales</strong> (${aed(P.revenue)} revenue). Ad spend couldn't be loaded, so cost and ROAS figures aren't available.</p>`;
+            } else if (P.spend === 0 && P.leads === 0) {
+                html += `<p class="lead">No paid ad spend or paid leads recorded for this period yet.</p>`;
+            } else {
+                const bits = [];
+                if (cpl(P) !== null) bits.push(`${aed2(cpl(P))} per lead`);
+                if (conv(P) !== null) bits.push(`${conv(P).toFixed(1)}% conversion`);
+                if (roas(P) !== null) bits.push(`${roas(P).toFixed(2)}x ROAS`);
+                html += `<p class="lead">Paid ads spent <strong>${aed(P.spend)}</strong> and brought <strong>${P.leads.toLocaleString()} leads</strong> and <strong>${P.sales.toLocaleString()} sales</strong> (${aed(P.revenue)} revenue)${bits.length ? ': ' + bits.join(', ') : ''}.</p>`;
+                if (prev && prev.adsLoaded) {
+                    const Q = prev.paid;
+                    const parts = [
+                        change(P.spend, Q.spend, false) && `spend ${change(P.spend, Q.spend, false)}`,
+                        change(P.leads, Q.leads) && `leads ${change(P.leads, Q.leads)}`,
+                        change(P.sales, Q.sales) && `sales ${change(P.sales, Q.sales)}`,
+                        cpl(P) !== null && cpl(Q) !== null && `cost per lead ${change(cpl(P), cpl(Q), false)} (${aed2(cpl(Q))} → ${aed2(cpl(P))})`
+                    ].filter(Boolean);
+                    if (parts.length) html += `<p>Versus the previous period: ${parts.join(', ')}.</p>`;
+                }
+            }
+
+            // Channel lines and highlights
+            const items = [];
+            if (cur.adsLoaded) {
+                const chans = AD_PLATFORMS.map(p => ({ p, x: cur.platforms[p.key], y: prev && prev.adsLoaded ? prev.platforms[p.key] : null }))
+                    .filter(c => c.x.spend > 0 || c.x.leads > 0);
+                chans.forEach(({ p, x, y }) => {
+                    const share = pct(x.spend, P.spend);
+                    let line = `<strong>${p.label}:</strong> ${aed(x.spend)}${share !== null ? ` (${share.toFixed(0)}% of paid spend)` : ''} for ${x.leads} lead${x.leads === 1 ? '' : 's'} and ${x.sales} sale${x.sales === 1 ? '' : 's'}`;
+                    if (cpl(x) !== null) line += `, ${aed2(cpl(x))} per lead`;
+                    if (roas(x) !== null) line += `, ${roas(x).toFixed(2)}x ROAS`;
+                    if (y) {
+                        const c1 = change(x.leads, y.leads);
+                        const c2 = cpl(x) !== null && cpl(y) !== null ? change(cpl(x), cpl(y), false) : null;
+                        const cs = [c1 && `leads ${c1}`, c2 && `cost per lead ${c2}`].filter(Boolean);
+                        if (cs.length) line += ` (${cs.join(', ')})`;
+                    }
+                    items.push(line + '.');
+                });
+
+                const spenders = chans.filter(c => c.x.spend > 0);
+                const withSales = spenders.filter(c => c.x.sales > 0);
+                if (withSales.length > 1) {
+                    const best = withSales.reduce((a, b) => roas(b.x) > roas(a.x) ? b : a);
+                    items.push(`<strong>Best return:</strong> ${best.p.label} at ${roas(best.x).toFixed(2)}x ROAS.`);
+                }
+                const withLeads = spenders.filter(c => c.x.leads > 0);
+                if (withLeads.length > 1) {
+                    const cheap = withLeads.reduce((a, b) => cpl(b.x) < cpl(a.x) ? b : a);
+                    items.push(`<strong>Cheapest leads:</strong> ${cheap.p.label} at ${aed2(cpl(cheap.x))} per lead.`);
+                }
+                spenders.forEach(({ p, x }) => {
+                    if (x.leads === 0) items.push(`<strong>Needs attention:</strong> ${p.label} spent ${aed(x.spend)} with no leads in Skye.`);
+                    else if (x.sales === 0) items.push(`<strong>Needs attention:</strong> ${p.label} spent ${aed(x.spend)} with no sales yet.`);
+                    else if (roas(x) < 1) items.push(`<strong>Needs attention:</strong> ${p.label} brought ${aed(x.revenue)} revenue on ${aed(x.spend)} spend (${roas(x).toFixed(2)}x ROAS).`);
+                });
+            }
+
+            // Paid vs unpaid share
+            const allLeads = P.leads + cur.unpaid.leads, allSales = P.sales + cur.unpaid.sales;
+            if (allLeads > 0) {
+                let line = `<strong>Paid vs unpaid:</strong> paid ads brought ${pct(P.leads, allLeads).toFixed(0)}% of all leads and ${allSales > 0 ? pct(P.sales, allSales).toFixed(0) : 0}% of sales. Unpaid sources brought ${cur.unpaid.leads.toLocaleString()} leads and ${cur.unpaid.sales.toLocaleString()} sales`;
+                if (cur.topUnpaid) line += `, mostly from ${cur.topUnpaid[0]} (${cur.topUnpaid[1].leads.toLocaleString()} leads)`;
+                items.push(line + '.');
+            }
+            if (items.length) html += `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+
+            // Data notes
+            const notes = [];
+            if (ads && ads.errors) AD_PLATFORMS.forEach(p => { if (ads.errors[p.key]) notes.push(`${p.label} spend not included: ${ads.errors[p.key]}`); });
+            if (ads) AD_PLATFORMS.forEach(p => {
+                const a = ads[p.key + 'Account'];
+                if (a && a.updatedAt && Date.now() - new Date(a.updatedAt).getTime() > 3 * 3600000) notes.push(`${p.label} spend was last updated ${Math.round((Date.now() - new Date(a.updatedAt).getTime()) / 3600000)} hours ago`);
+            });
+            if (prev && !prev.adsLoaded) notes.push('Previous period ad spend could not be loaded, so spend changes are not shown');
+            notes.push('Leads exclude deleted leads. This summary is written automatically from the figures below.');
+            html += `<p class="note">${notes.join(' · ')}</p>`;
+            box.innerHTML = html;
+        }
+
+        // ---- Paid charts: spend vs revenue, leads vs sales, by channel ----
+        function renderPaidCharts(cmp, adsLoaded) {
+            const box = document.getElementById('paidCharts');
+            box.innerHTML = '';
+            const labels = AD_PLATFORMS.map(p => p.label);
+            const rows = AD_PLATFORMS.map((p, i) => cmp.list[i]);
+            const make = (id, title, datasets, format) => {
+                const div = document.createElement('div');
+                div.className = 'chart-container';
+                div.innerHTML = `<h3>${title}</h3><canvas id="${id}"></canvas>`;
+                box.appendChild(div);
+                new Chart(document.getElementById(id), {
+                    type: 'bar',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: true, position: 'top' }, valueLabels: { format } },
+                        scales: { y: { beginAtZero: true, grace: '15%', ticks: { callback: v => v.toLocaleString() } } }
+                    },
+                    plugins: [valueLabelsPlugin]
+                });
+            };
+            make('paidMoneyChart', 'Spend vs Revenue by Channel (AED)', [
+                { label: 'Spend', data: rows.map(r => adsLoaded ? r.spend : 0), backgroundColor: 'rgba(102, 126, 234, 0.75)', borderColor: 'rgb(102, 126, 234)', borderWidth: 2 },
+                { label: 'Revenue', data: rows.map(r => r.revenue), backgroundColor: 'rgba(21, 128, 61, 0.6)', borderColor: 'rgb(21, 128, 61)', borderWidth: 2 }
+            ], v => Math.round(v).toLocaleString());
+            make('paidCountChart', 'Leads vs Sales by Channel', [
+                { label: 'Leads', data: rows.map(r => r.leads), backgroundColor: 'rgba(102, 126, 234, 0.75)', borderColor: 'rgb(102, 126, 234)', borderWidth: 2 },
+                { label: 'Sales', data: rows.map(r => r.sales), backgroundColor: 'rgba(118, 75, 162, 0.65)', borderColor: 'rgb(118, 75, 162)', borderWidth: 2 }
+            ], v => Math.round(v).toLocaleString());
+        }
+
         // Boxes at the top: each paid channel's headline numbers, plus all paid ads combined
         const PAID_ACCENTS = { facebook: '#0866FF', google: '#1A73E8', bing: '#008373' };
 
-        function renderPaidCards(cmp, adsLoaded) {
+        // otherPaid: totals for Skye rows marked paid that aren't from Facebook, Google or Bing
+        function renderPaidCards(cmp, adsLoaded, otherPaid, otherPaidRows) {
             const box = document.getElementById('paidCards');
             const rows = AD_PLATFORMS.map((p, i) => ({ p, r: cmp.list[i] }));
             const paid = rows.reduce((t, { r }) => ({
                 spend: t.spend + r.spend, leads: t.leads + r.leads, sales: t.sales + r.sales, revenue: t.revenue + r.revenue
-            }), { spend: 0, leads: 0, sales: 0, revenue: 0 });
+            }), { spend: 0, leads: otherPaid.leads, sales: otherPaid.sales, revenue: otherPaid.revenue });
 
             const amount = (v) => v === null ? '-' : `<span class="cur">AED</span>${formatAmount(v)}`;
             const card = (title, r, accent, isTotal) => {
@@ -826,8 +1099,8 @@
                         ${stat('Leads', r.leads.toLocaleString())}
                         ${stat('Sales', r.sales.toLocaleString())}
                         ${stat('Conversion', conv)}
-                        ${stat('Cost/Lead', amount(cpl))}
-                        ${stat('Cost/Sale', amount(cps))}
+                        ${stat('Cost/Lead', cpl === null ? '-' : `<span class="cur">AED</span>${formatCost(cpl)}`)}
+                        ${stat('Cost/Sale', cps === null ? '-' : `<span class="cur">AED</span>${formatCost(cps)}`)}
                         ${stat('ROAS', roas)}
                         ${stat('Revenue', amount(r.revenue))}
                     </div>
@@ -835,18 +1108,18 @@
             };
 
             box.innerHTML = `
-                <h3>Paid Ads Performance</h3>
                 <div class="paid-grid">
                     ${rows.map(({ p, r }) => card(`${p.icon}${p.label}`, r, PAID_ACCENTS[p.key], false)).join('')}
                     ${card(`${uiIcon('wallet')}All Paid Ads`, paid, 'transparent', true)}
-                </div>`;
+                </div>
+                ${otherPaid.leads > 0 ? `<p style="color: #6b7280; font-size: 13px; margin-top: 10px;">All Paid Ads also includes ${otherPaid.leads} lead${otherPaid.leads === 1 ? '' : 's'} and ${otherPaid.sales} sale${otherPaid.sales === 1 ? '' : 's'} that Skye marks as paid from other sources with no ad spend data (${[...new Set(otherPaidRows.map(m => m.source || 'unknown'))].join(', ')}).</p>` : ''}`;
         }
 
         function renderPlatformComparison(cmp) {
             const box = document.getElementById('platformContainer');
             const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
             const ratio = (a, b) => b > 0 ? a / b : null;
-            const money = (v) => v === null ? '-' : formatAmount(v);
+            const money = (v) => v === null ? '-' : formatCost(v);
             const line = (r, label, isTotal) => {
                 const cpl = r.spend > 0 ? ratio(r.spend, r.leads) : null;
                 const cps = r.spend > 0 ? ratio(r.spend, r.sales) : null;
@@ -882,8 +1155,9 @@
         }
 
         // adSpend: total Facebook + Google + Bing spend (null if ad data didn't load)
-        function renderKPIs(metrics, adSpend) {
-            const kpiContainer = document.getElementById('kpiCards');
+        // adSpend undefined = no spend card (unpaid section)
+        function renderKPIs(metrics, adSpend, containerId) {
+            const kpiContainer = document.getElementById(containerId);
             kpiContainer.innerHTML = '';
 
             // Calculate aggregated KPIs
@@ -902,10 +1176,10 @@
             const kpis = [
                 { title: 'Total Leads', value: totalLeads, icon: uiIcon('users') },
                 { title: 'Sales', value: totalSales, icon: uiIcon('sales') },
-                { title: 'Marketing Spend', value: adSpend === null ? '-' : formatCurrency(adSpend), icon: uiIcon('wallet') },
+                adSpend === undefined ? null : { title: 'Marketing Spend', value: adSpend === null ? '-' : formatCurrency(adSpend), icon: uiIcon('wallet') },
                 { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue') },
                 { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: uiIcon('target') }
-            ];
+            ].filter(Boolean);
 
             kpis.forEach(kpi => {
                 const card = document.createElement('div');
@@ -964,8 +1238,8 @@
             }
         };
 
-        function renderCharts(metrics) {
-            const chartsContainer = document.getElementById('chartsContainer');
+        function renderCharts(metrics, containerId, prefix) {
+            const chartsContainer = document.getElementById(containerId);
             chartsContainer.innerHTML = '';
 
             // Group by source for charts
@@ -994,10 +1268,10 @@
             // Bar Chart - Leads by Source
             const barChartDiv = document.createElement('div');
             barChartDiv.className = 'chart-container';
-            barChartDiv.innerHTML = '<h3>Leads by Source</h3><canvas id="barChart"></canvas>';
+            barChartDiv.innerHTML = `<h3>Leads by Source</h3><canvas id="${prefix}LeadsChart"></canvas>`;
             chartsContainer.appendChild(barChartDiv);
 
-            new Chart(document.getElementById('barChart'), {
+            new Chart(document.getElementById(prefix + 'LeadsChart'), {
                 type: 'bar',
                 data: {
                     labels: sources,
@@ -1037,10 +1311,10 @@
             // Radar Chart - Conversion Rate by Source
             const radarChartDiv = document.createElement('div');
             radarChartDiv.className = 'chart-container';
-            radarChartDiv.innerHTML = '<h3>Conversion Rate by Source (%)</h3><canvas id="radarChart"></canvas>';
+            radarChartDiv.innerHTML = `<h3>Conversion Rate by Source (%)</h3><canvas id="${prefix}ConvChart"></canvas>`;
             chartsContainer.appendChild(radarChartDiv);
 
-            new Chart(document.getElementById('radarChart'), {
+            new Chart(document.getElementById(prefix + 'ConvChart'), {
                 type: 'bar',
                 data: {
                     labels: sources,
@@ -1071,9 +1345,9 @@
             });
         }
 
-        function renderTable(metrics) {
-            const tableContainer = document.getElementById('tableContainer');
-            tableContainer.innerHTML = '<h3>Detailed Performance Metrics</h3>';
+        function renderTable(metrics, containerId, title) {
+            const tableContainer = document.getElementById(containerId);
+            tableContainer.innerHTML = `<h3>${title}</h3>`;
 
             if (metrics.length === 0) {
                 tableContainer.innerHTML += '<p style="color: #666; padding: 20px;">No data available for the selected date range.</p>';
