@@ -229,6 +229,12 @@
             border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 12px;
         }
         .paid-card.total .paid-stats { border-top-color: rgba(255, 255, 255, 0.25); }
+        .car-split { margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(0, 0, 0, 0.12); }
+        .paid-card.total .car-split { border-top-color: rgba(255, 255, 255, 0.3); }
+        .car-split .lbl { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.65; margin-bottom: 4px; }
+        .car-row { display: grid; grid-template-columns: 1.4fr 0.8fr 1fr; gap: 6px; font-size: 13px; padding: 2px 0; }
+        .car-row span:nth-child(2), .car-row span:nth-child(3) { text-align: right; font-weight: 600; }
+        .car-row .cur { font-size: 0.75em; vertical-align: 0.1em; }
         .paid-stat .val { font-size: 16px; font-weight: 700; }
         .paid-stat .val .cur { font-size: 0.6em; vertical-align: 0.15em; }
         .roas-good { color: #15803d; }
@@ -284,7 +290,7 @@
         }
 
         .kpi-card .sub-metric {
-            font-size: 14px;
+            font-size: 13px;
             opacity: 1 !important;
             color: white !important;
             margin-top: 10px;
@@ -801,6 +807,12 @@
             metrics.forEach(m => {
                 m.product = productOf(m);
                 m.bai_split = formatNumber(m.total_revenue || 0) * BAI_SPLIT_RATES[m.product];
+                // Car insurance split: Comprehensive vs Third-Party Liability (TPL)
+                m._hasCarSplit = ['comp_sales_count', 'tpl_sales_count', 'comp_revenue', 'tpl_revenue'].some(k => m[k] !== undefined && m[k] !== null);
+                m.comp_sales = formatNumber(m.comp_sales_count || 0);
+                m.tpl_sales = formatNumber(m.tpl_sales_count || 0);
+                m.comp_rev = formatNumber(m.comp_revenue || 0);
+                m.tpl_rev = formatNumber(m.tpl_revenue || 0);
             });
             return metrics;
         }
@@ -859,7 +871,7 @@
         }
 
         function buildPlatformComparison(skyeMetrics, ads) {
-            const blank = () => ({ spend: 0, leads: 0, sales: 0, revenue: 0, baiSplit: 0, sources: new Set() });
+            const blank = () => ({ spend: 0, leads: 0, sales: 0, revenue: 0, baiSplit: 0, car: { ...CAR_ZERO }, sources: new Set() });
             const rows = {};
             AD_PLATFORMS.forEach(p => {
                 rows[p.key] = { ...blank(), label: `${p.icon}${p.label}`, spend: (ads && ads.spend && ads.spend[p.key]) || 0, adSpendLoaded: !!ads };
@@ -873,15 +885,33 @@
                 r.sales += formatNumber(m.total_sales || 0);
                 r.revenue += formatNumber(m.total_revenue || 0);
                 r.baiSplit += m.bai_split || 0;
+                r.car = addCar(r.car, m);
                 if (m.source) r.sources.add(m.source);
             });
 
             const list = [...AD_PLATFORMS.map(p => rows[p.key]), rows.other];
             const total = list.reduce((t, r) => ({
                 spend: t.spend + r.spend, leads: t.leads + r.leads,
-                sales: t.sales + r.sales, revenue: t.revenue + r.revenue, baiSplit: t.baiSplit + r.baiSplit
-            }), { spend: 0, leads: 0, sales: 0, revenue: 0, baiSplit: 0 });
+                sales: t.sales + r.sales, revenue: t.revenue + r.revenue, baiSplit: t.baiSplit + r.baiSplit, car: mergeCar(t.car, r.car)
+            }), { spend: 0, leads: 0, sales: 0, revenue: 0, baiSplit: 0, car: { ...CAR_ZERO } });
             return { list, total };
+        }
+
+        // ---- Car insurance split helpers ----
+        const CAR_ZERO = { compSales: 0, tplSales: 0, compRevenue: 0, tplRevenue: 0, hasCar: false };
+        function addCar(t, m) {
+            return {
+                compSales: t.compSales + (m.comp_sales || 0), tplSales: t.tplSales + (m.tpl_sales || 0),
+                compRevenue: t.compRevenue + (m.comp_rev || 0), tplRevenue: t.tplRevenue + (m.tpl_rev || 0),
+                hasCar: t.hasCar || !!m._hasCarSplit
+            };
+        }
+        function mergeCar(a, b) {
+            return {
+                compSales: a.compSales + b.compSales, tplSales: a.tplSales + b.tplSales,
+                compRevenue: a.compRevenue + b.compRevenue, tplRevenue: a.tplRevenue + b.tplRevenue,
+                hasCar: a.hasCar || b.hasCar
+            };
         }
 
         // ---- Totals helpers ----
@@ -890,8 +920,9 @@
                 leads: t.leads + formatNumber(m.total_leads || 0),
                 sales: t.sales + formatNumber(m.total_sales || 0),
                 revenue: t.revenue + formatNumber(m.total_revenue || 0),
-                baiSplit: t.baiSplit + (m.bai_split || 0)
-            }), { leads: 0, sales: 0, revenue: 0, baiSplit: 0 });
+                baiSplit: t.baiSplit + (m.bai_split || 0),
+                car: addCar(t.car, m)
+            }), { leads: 0, sales: 0, revenue: 0, baiSplit: 0, car: { ...CAR_ZERO } });
         }
 
         // Paid / unpaid / per-platform totals for one period
@@ -1091,13 +1122,24 @@
         // Boxes at the top: each paid channel's headline numbers, plus all paid ads combined
         const PAID_ACCENTS = { facebook: '#0866FF', google: '#1A73E8', bing: '#008373' };
 
+        // Comprehensive vs Third-Party rows under a paid channel box
+        function carSplitBlock(car) {
+            if (!car || !car.hasCar) return '';
+            const row = (label, sales, revenue) => `<div class="car-row"><span>${label}</span><span>${sales.toLocaleString()} sale${sales === 1 ? '' : 's'}</span><span><span class="cur">AED</span>${formatAmount(revenue)}</span></div>`;
+            return `<div class="car-split">
+                <span class="lbl">Car insurance</span>
+                ${row('Comprehensive', car.compSales, car.compRevenue)}
+                ${row('Third-Party (TPL)', car.tplSales, car.tplRevenue)}
+            </div>`;
+        }
+
         // otherPaid: totals for Skye rows marked paid that aren't from Facebook, Google or Bing
         function renderPaidCards(cmp, adsLoaded, otherPaid, otherPaidRows) {
             const box = document.getElementById('paidCards');
             const rows = AD_PLATFORMS.map((p, i) => ({ p, r: cmp.list[i] }));
             const paid = rows.reduce((t, { r }) => ({
-                spend: t.spend + r.spend, leads: t.leads + r.leads, sales: t.sales + r.sales, revenue: t.revenue + r.revenue, baiSplit: t.baiSplit + r.baiSplit
-            }), { spend: 0, leads: otherPaid.leads, sales: otherPaid.sales, revenue: otherPaid.revenue, baiSplit: otherPaid.baiSplit });
+                spend: t.spend + r.spend, leads: t.leads + r.leads, sales: t.sales + r.sales, revenue: t.revenue + r.revenue, baiSplit: t.baiSplit + r.baiSplit, car: mergeCar(t.car, r.car)
+            }), { spend: 0, leads: otherPaid.leads, sales: otherPaid.sales, revenue: otherPaid.revenue, baiSplit: otherPaid.baiSplit, car: otherPaid.car });
 
             const amount = (v) => v === null ? '-' : `<span class="cur">AED</span>${formatAmount(v)}`;
             const card = (title, r, accent, isTotal) => {
@@ -1121,6 +1163,7 @@
                         ${stat('Revenue', amount(r.revenue))}
                         ${stat('BAI Split', amount(r.baiSplit))}
                     </div>
+                    ${carSplitBlock(r.car)}
                 </div>`;
             };
 
@@ -1183,21 +1226,26 @@
             let totalSales = 0;
             let totalRevenue = 0;
             let totalSplit = 0;
+            let car = { ...CAR_ZERO };
 
             metrics.forEach(metric => {
                 totalLeads += formatNumber(metric.total_leads || 0);
                 totalSales += formatNumber(metric.total_sales || 0);
                 totalRevenue += formatNumber(metric.total_revenue || 0);
                 totalSplit += metric.bai_split || 0;
+                car = addCar(car, metric);
             });
 
             const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0;
 
             const kpis = [
                 { title: 'Total Leads', value: totalLeads, icon: uiIcon('users') },
-                { title: 'Sales', value: totalSales, icon: uiIcon('sales') },
+                { title: 'Sales', value: totalSales, icon: uiIcon('sales'),
+                  subHtml: car.hasCar ? `<strong>Comprehensive:</strong> ${car.compSales.toLocaleString()}<br><strong>TPL:</strong> ${car.tplSales.toLocaleString()}` : undefined },
                 adSpend === undefined ? null : { title: 'Marketing Spend', value: adSpend === null ? '-' : formatCurrency(adSpend), icon: uiIcon('wallet') },
-                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue'), subvalue: `AED ${formatAmount(totalSplit)}`, sublabel: 'BAI Split' },
+                { title: 'Total Revenue', value: formatCurrency(totalRevenue), icon: uiIcon('revenue'),
+                  subHtml: `<strong>BAI Split:</strong> AED ${formatAmount(totalSplit)}` +
+                      (car.hasCar ? `<br><strong>Comprehensive:</strong> AED ${formatAmount(car.compRevenue)}<br><strong>TPL:</strong> AED ${formatAmount(car.tplRevenue)}` : '') },
                 { title: 'Conversion Rate', value: conversionRate.toFixed(2) + '%', icon: uiIcon('target') }
             ].filter(Boolean);
 
@@ -1210,7 +1258,9 @@
                 `;
 
                 // Add sub-metric if the card has one
-                if (kpi.subvalue !== undefined) {
+                if (kpi.subHtml) {
+                    cardContent += `<div class="sub-metric">${kpi.subHtml}</div>`;
+                } else if (kpi.subvalue !== undefined) {
                     cardContent += `
                         <div class="sub-metric">
                             <strong>${kpi.sublabel}:</strong> ${typeof kpi.subvalue === 'number' ? kpi.subvalue.toLocaleString() : kpi.subvalue}
