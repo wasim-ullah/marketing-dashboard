@@ -985,6 +985,7 @@
             const pct = (a, b) => b > 0 ? a / b * 100 : null;
             const cpl = (x) => x.spend > 0 && x.leads > 0 ? x.spend / x.leads : null;
             const roas = (x) => x.spend > 0 ? x.revenue / x.spend : null;
+            const baiRoas = (x) => x.spend > 0 ? x.baiSplit / x.spend : null;
             const conv = (x) => x.leads > 0 ? x.sales / x.leads * 100 : null;
             // "up 12%" coloured by whether the move is good (higherIsGood) or bad
             const change = (now, before, higherIsGood = true) => {
@@ -1012,7 +1013,7 @@
                 const bits = [];
                 if (cpl(P) !== null) bits.push(`${aed2(cpl(P))} per lead`);
                 if (conv(P) !== null) bits.push(`${conv(P).toFixed(1)}% conversion`);
-                if (roas(P) !== null) bits.push(`${roas(P).toFixed(2)}x ROAS`);
+                if (roas(P) !== null) bits.push(`${roas(P).toFixed(2)}x revenue ROAS and ${baiRoas(P).toFixed(2)}x BAI ROAS`);
                 html += `<p class="lead">Paid ads spent <strong>${aed(P.spend)}</strong> and brought <strong>${P.leads.toLocaleString()} leads</strong> and <strong>${P.sales.toLocaleString()} sales</strong> (${aed(P.revenue)} revenue, of which ${aed(P.baiSplit)} is BAI's split)${bits.length ? ': ' + bits.join(', ') : ''}.</p>`;
                 if (prev && prev.adsLoaded) {
                     const Q = prev.paid;
@@ -1035,7 +1036,7 @@
                     const share = pct(x.spend, P.spend);
                     let line = `<strong>${p.label}:</strong> ${aed(x.spend)}${share !== null ? ` (${share.toFixed(0)}% of paid spend)` : ''} for ${x.leads} lead${x.leads === 1 ? '' : 's'} and ${x.sales} sale${x.sales === 1 ? '' : 's'}`;
                     if (cpl(x) !== null) line += `, ${aed2(cpl(x))} per lead`;
-                    if (roas(x) !== null) line += `, ${roas(x).toFixed(2)}x ROAS`;
+                    if (roas(x) !== null) line += `, ${roas(x).toFixed(2)}x revenue ROAS, ${baiRoas(x).toFixed(2)}x BAI ROAS`;
                     if (y) {
                         const c1 = change(x.leads, y.leads);
                         const c2 = cpl(x) !== null && cpl(y) !== null ? change(cpl(x), cpl(y), false) : null;
@@ -1048,8 +1049,8 @@
                 const spenders = chans.filter(c => c.x.spend > 0);
                 const withSales = spenders.filter(c => c.x.sales > 0);
                 if (withSales.length > 1) {
-                    const best = withSales.reduce((a, b) => roas(b.x) > roas(a.x) ? b : a);
-                    items.push(`<strong>Best return:</strong> ${best.p.label} at ${roas(best.x).toFixed(2)}x ROAS.`);
+                    const best = withSales.reduce((a, b) => baiRoas(b.x) > baiRoas(a.x) ? b : a);
+                    items.push(`<strong>Best return:</strong> ${best.p.label}, where BAI's split is ${baiRoas(best.x).toFixed(2)}x the spend (${roas(best.x).toFixed(2)}x on total revenue).`);
                 }
                 const withLeads = spenders.filter(c => c.x.leads > 0);
                 if (withLeads.length > 1) {
@@ -1059,7 +1060,7 @@
                 spenders.forEach(({ p, x }) => {
                     if (x.leads === 0) items.push(`<strong>Needs attention:</strong> ${p.label} spent ${aed(x.spend)} with no leads in Skye.`);
                     else if (x.sales === 0) items.push(`<strong>Needs attention:</strong> ${p.label} spent ${aed(x.spend)} with no sales yet.`);
-                    else if (roas(x) < 1) items.push(`<strong>Needs attention:</strong> ${p.label} brought ${aed(x.revenue)} revenue on ${aed(x.spend)} spend (${roas(x).toFixed(2)}x ROAS).`);
+                    else if (baiRoas(x) < 1) items.push(`<strong>Needs attention:</strong> ${p.label}'s BAI split of ${aed(x.baiSplit)} doesn't cover its ${aed(x.spend)} spend (${baiRoas(x).toFixed(2)}x BAI ROAS, ${roas(x).toFixed(2)}x on total revenue).`);
                 });
             }
 
@@ -1147,9 +1148,11 @@
                 const cpl = spend > 0 && r.leads > 0 ? spend / r.leads : null;
                 const cps = spend > 0 && r.sales > 0 ? spend / r.sales : null;
                 const conv = r.leads > 0 ? (r.sales / r.leads * 100).toFixed(2) + '%' : '-';
-                const roasVal = spend > 0 ? r.revenue / spend : null;
-                const roas = roasVal === null ? '-' : `<span class="${roasVal >= 1 ? 'roas-good' : 'roas-bad'}">${roasVal.toFixed(2)}x</span>`;
-                const stat = (label, value) => `<div class="paid-stat"><span class="lbl">${label}</span><span class="val">${value}</span></div>`;
+                // Two returns on ad spend: total revenue / spend, and BAI's split / spend
+                const roasCell = (v) => v === null ? '-' : `<span class="${v >= 1 ? 'roas-good' : 'roas-bad'}">${v.toFixed(2)}x</span>`;
+                const roas = roasCell(spend > 0 ? r.revenue / spend : null);
+                const baiRoas = roasCell(spend > 0 ? r.baiSplit / spend : null);
+                const stat = (label, value, tip) => `<div class="paid-stat"${tip ? ` title="${tip}"` : ''}><span class="lbl">${label}</span><span class="val">${value}</span></div>`;
                 return `<div class="paid-card${isTotal ? ' total' : ''}" style="--accent: ${accent};">
                     <div class="paid-head">${title}</div>
                     <div class="paid-spend"><span class="lbl">Spend</span><span class="big">${amount(spend)}</span></div>
@@ -1159,9 +1162,10 @@
                         ${stat('Conversion', conv)}
                         ${stat('Cost/Lead', cpl === null ? '-' : `<span class="cur">AED</span>${formatCost(cpl)}`)}
                         ${stat('Cost/Sale', cps === null ? '-' : `<span class="cur">AED</span>${formatCost(cps)}`)}
-                        ${stat('ROAS', roas)}
                         ${stat('Revenue', amount(r.revenue))}
                         ${stat('BAI Split', amount(r.baiSplit))}
+                        ${stat('ROAS', roas, 'Total revenue ÷ spend')}
+                        ${stat('BAI ROAS', baiRoas, "BAI Split ÷ spend: below 1x, BAI's share doesn't cover the ad spend")}
                     </div>
                     ${carSplitBlock(r.car)}
                 </div>`;
@@ -1185,6 +1189,7 @@
                 const cps = r.spend > 0 ? ratio(r.spend, r.sales) : null;
                 const conv = ratio(r.sales, r.leads);
                 const roas = ratio(r.revenue, r.spend);
+                const baiRoas = ratio(r.baiSplit, r.spend);
                 const sources = r.sources && r.sources.size ? `<span style="display:block; font-size: 11px; color: #888;">UTM source: ${[...r.sources].map(esc).join(', ')}</span>` : '';
                 const tag = isTotal ? 'th' : 'td';
                 return `<tr${isTotal ? ' style="background: #f8f9fa;"' : ''}>
@@ -1198,6 +1203,7 @@
                     <${tag}>${money(cps)}</${tag}>
                     <${tag}>${conv === null ? '-' : (conv * 100).toFixed(2) + '%'}</${tag}>
                     <${tag}>${roas === null ? '-' : roas.toFixed(2) + 'x'}</${tag}>
+                    <${tag}>${baiRoas === null ? '-' : baiRoas.toFixed(2) + 'x'}</${tag}>
                 </tr>`;
             };
             box.innerHTML = `
@@ -1205,14 +1211,14 @@
                 <table>
                     <thead><tr>
                         <th>Platform</th><th>Spend (AED)</th><th>Leads</th><th>Sales</th><th>Revenue (AED)</th><th>BAI Split (AED)</th>
-                        <th>Cost/Lead (AED)</th><th>Cost/Sale (AED)</th><th>Conversion %</th><th>ROAS</th>
+                        <th>Cost/Lead (AED)</th><th>Cost/Sale (AED)</th><th>Conversion %</th><th>Revenue ROAS</th><th>BAI ROAS</th>
                     </tr></thead>
                     <tbody>
                         ${cmp.list.map(r => line(r, r.label, false)).join('')}
                         ${line(cmp.total, 'Total', true)}
                     </tbody>
                 </table>
-                <p style="color: #666; font-size: 13px; margin-top: 10px;">Spend for Facebook, Google and Bing comes from each ad platform; leads, sales and revenue come from Skye, grouped by UTM source. Leads exclude deleted leads. BAI Split is BAI's share of revenue: 17% for car insurance, 10% for health (campaigns starting "hlt").</p>`;
+                <p style="color: #666; font-size: 13px; margin-top: 10px;">Spend for Facebook, Google and Bing comes from each ad platform; leads, sales and revenue come from Skye, grouped by UTM source. Leads exclude deleted leads. BAI Split is BAI's share of revenue: 17% for car insurance, 10% for health (campaigns starting "hlt"). Revenue ROAS = revenue ÷ spend; BAI ROAS = BAI Split ÷ spend (below 1x, BAI's share doesn't cover the ad spend).</p>`;
         }
 
         // adSpend: total Facebook + Google + Bing spend (null if ad data didn't load)
