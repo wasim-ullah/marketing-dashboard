@@ -198,6 +198,18 @@
         .up-bad, .down-bad { color: #b91c1c; font-weight: 600; }
         .flat { color: #6b7280; font-weight: 600; }
 
+        /* Historical trends */
+        .trend-head {
+            display: flex; justify-content: space-between; align-items: flex-end; gap: 15px; flex-wrap: wrap;
+            margin: 10px 0 18px;
+        }
+        .trend-head h3 { font-size: 18px; color: #1f2937; margin-bottom: 4px; }
+        .trend-head small { font-size: 13px; color: #6b7280; }
+        .trend-toggle { display: flex; gap: 8px; }
+        .trend-loading { color: #6b7280; padding: 10px 0 25px; }
+        .trend-note { font-size: 12.5px; color: #6b7280; margin: -12px 0 30px; line-height: 1.6; }
+        .trend-note:empty { display: none; }
+
         /* Paid ads boxes at the top */
         .paid-section { margin-bottom: 30px; }
         .paid-section h3 { font-size: 18px; color: #333; margin-bottom: 15px; }
@@ -447,6 +459,22 @@
         <div class="section-title paid-title"><span>Paid Ads</span><small>Facebook, Google and Bing: spend from the ad platforms, leads and sales from Skye</small></div>
         <div id="paidCards" class="paid-section"></div>
         <div id="paidCharts" class="charts-grid"></div>
+
+        <!-- Historical trends: same figures period by period (independent of the date range above) -->
+        <div class="trend-head">
+            <div>
+                <h3>Historical Trends</h3>
+                <small>How the key numbers have moved over time. These charts always run up to today and don't follow the date range above.</small>
+            </div>
+            <div class="trend-toggle">
+                <button class="preset-btn active" data-gran="month" onclick="setTrendGranularity('month')">Monthly</button>
+                <button class="preset-btn" data-gran="week" onclick="setTrendGranularity('week')">Weekly</button>
+            </div>
+        </div>
+        <div id="trendStatus"></div>
+        <div id="trendCharts" class="charts-grid"></div>
+        <p id="trendNote" class="trend-note"></p>
+
         <div id="paidTable" class="table-container"></div>
 
         <div class="table-container" id="fbAdsSection">
@@ -583,7 +611,7 @@
         }
 
         function updatePresetLabels() {
-            document.querySelectorAll('.preset-btn').forEach(btn => {
+            document.querySelectorAll('.date-controls .preset-btn').forEach(btn => {
                 const offset = Number(btn.dataset.offset);
                 const name = monthRange(offset).start.toLocaleString('en-US', { month: 'short' });
                 const label = ['This Month', 'Last Month', 'Previous Month'][offset];
@@ -593,7 +621,7 @@
 
         function setActivePreset(offset) {
             activeMonthOffset = offset;
-            document.querySelectorAll('.preset-btn').forEach(btn => {
+            document.querySelectorAll('.date-controls .preset-btn').forEach(btn => {
                 btn.classList.toggle('active', offset !== null && Number(btn.dataset.offset) === offset);
             });
         }
@@ -632,6 +660,9 @@
             }
 
             AD_PLATFORMS.forEach(p => { document.getElementById(p.prefix + 'AdsMessage').innerHTML = ''; });
+
+            // Trend charts load alongside; finished periods come from cache after the first load
+            loadTrends();
 
             // Current period plus the period before it (for the written summary's comparison)
             const prevRange = previousPeriod(dateFrom, dateTo);
@@ -1118,6 +1149,306 @@
                 { label: 'Leads', data: rows.map(r => r.leads), backgroundColor: 'rgba(102, 126, 234, 0.75)', borderColor: 'rgb(102, 126, 234)', borderWidth: 2 },
                 { label: 'Sales', data: rows.map(r => r.sales), backgroundColor: 'rgba(118, 75, 162, 0.65)', borderColor: 'rgb(118, 75, 162)', borderWidth: 2 }
             ], v => Math.round(v).toLocaleString());
+        }
+
+        // ---- Historical trends: the same figures month by month (or week by week) ----
+        // Both APIs only return totals for a date range, so each period is its own pair of requests.
+        // Finished periods are cached for the session; the period in progress is fetched again
+        // on each refresh so it stays current.
+        const TREND_START = '2026-01-01'; // the API has no data before 2026
+        const TREND_MONTHS = 12, TREND_WEEKS = 12;
+        // Channel colours checked for colour-blind separation; spend / revenue / BAI split
+        // match the bar charts above
+        const TREND_COLORS = {
+            facebook: '#0866FF', google: '#E8590C', bing: '#0A9373', allPaid: '#374151',
+            paid: '#667eea', unpaid: '#d97706', spend: '#667eea', revenue: '#15803d', bai: '#d97706'
+        };
+        const trendCache = {};
+        let trendGranularity = 'month';
+        let trendRun = 0;
+        let trendChartObjs = [];
+
+        function trendPeriods(gran) {
+            const today = new Date();
+            const todayStr = formatDate(today);
+            const mon = (d) => d.toLocaleString('en-US', { month: 'short' });
+            const out = [];
+            if (gran === 'month') {
+                for (let i = TREND_MONTHS - 1; i >= 0; i--) {
+                    const s = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                    const e = new Date(s.getFullYear(), s.getMonth() + 1, 0);
+                    const from = formatDate(s);
+                    if (from < TREND_START) continue;
+                    const to = formatDate(e) > todayStr ? todayStr : formatDate(e);
+                    out.push({ from, to, label: mon(s), year: s.getFullYear(), partial: to < formatDate(e) });
+                }
+                // Add the year to labels once the chart spans more than one year
+                if (out.length && out[0].year !== out[out.length - 1].year) {
+                    out.forEach(p => { p.label += ` '${String(p.year).slice(2)}`; });
+                }
+            } else {
+                // Weeks run Monday to Sunday
+                const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+                for (let i = TREND_WEEKS - 1; i >= 0; i--) {
+                    const s = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * i);
+                    const e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+                    let from = formatDate(s);
+                    if (formatDate(e) < TREND_START) continue;
+                    if (from < TREND_START) from = TREND_START;
+                    const to = formatDate(e) > todayStr ? todayStr : formatDate(e);
+                    out.push({ from, to, label: `${s.getDate()} ${mon(s)}`, partial: to < formatDate(e) });
+                }
+            }
+            return out;
+        }
+
+        // Run fn over items with at most `limit` running at once (keeps the ad APIs from being flooded)
+        async function mapLimit(items, limit, fn) {
+            const out = new Array(items.length);
+            let next = 0;
+            const worker = async () => {
+                while (next < items.length) {
+                    const i = next++;
+                    out[i] = await fn(items[i], i);
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+            return out;
+        }
+
+        // Whether a platform's spend is known for a period: 'full', 'partial' or 'none'.
+        // Script-fed platforms (Google, Bing) say in a note how far back their data goes.
+        function spendCoverage(ads, key, p) {
+            if (!ads || (ads.errors && ads.errors[key])) return 'none';
+            const account = ads[key + 'Account'];
+            const m = account && account.note && account.note.match(/\d{4}-\d{2}-\d{2}/);
+            if (!m) return 'full';
+            if (p.to < m[0]) return 'none';
+            return p.from < m[0] ? 'partial' : 'full';
+        }
+
+        function trendPoint(metrics, ads, p) {
+            const s = periodStats(metrics, ads);
+            const gaps = [], partial = [];
+            const platforms = {};
+            AD_PLATFORMS.forEach(pl => {
+                const cov = spendCoverage(ads, pl.key, p);
+                if (cov === 'none') gaps.push(pl.label);
+                if (cov === 'partial') partial.push(pl.label);
+                platforms[pl.key] = { ...s.platforms[pl.key], spend: cov === 'none' ? null : s.platforms[pl.key].spend };
+            });
+            // Basis for the all-paid ratios: the same as the boxes above when every channel's spend
+            // is known; otherwise only the channels whose spend is known, so leads or revenue from a
+            // channel with missing spend don't flatter cost per lead or ROAS
+            let basis = s.paid;
+            if (gaps.length) {
+                basis = AD_PLATFORMS.map(pl => platforms[pl.key]).filter(x => x.spend !== null).reduce((t, x) => ({
+                    spend: t.spend + x.spend, leads: t.leads + x.leads, sales: t.sales + x.sales,
+                    revenue: t.revenue + x.revenue, baiSplit: t.baiSplit + x.baiSplit
+                }), { spend: 0, leads: 0, sales: 0, revenue: 0, baiSplit: 0 });
+            }
+            return { paid: s.paid, unpaid: s.unpaid, platforms, basis, anySpend: gaps.length < AD_PLATFORMS.length, gaps, partial };
+        }
+
+        async function fetchTrendPoint(p) {
+            const key = `${p.from}|${p.to}`;
+            if (trendCache[key]) return trendCache[key];
+            const [kpi, ads] = await Promise.allSettled([
+                postJson('/api/fetch-dashboard', { dateFrom: p.from, dateTo: p.to }),
+                postJson('/api/fetch-ads-spend', { startDate: p.from, endDate: p.to })
+            ]);
+            if (kpi.status === 'rejected' || kpi.value.error) return { failed: true };
+            const adsData = ads.status === 'fulfilled' && ads.value.data ? ads.value.data : null;
+            const point = trendPoint(transformApiResponse(kpi.value), adsData, p);
+            if (!p.partial && adsData) trendCache[key] = point;
+            return point;
+        }
+
+        function setTrendGranularity(gran) {
+            trendGranularity = gran;
+            document.querySelectorAll('.trend-toggle .preset-btn').forEach(b => b.classList.toggle('active', b.dataset.gran === gran));
+            loadTrends();
+        }
+
+        async function loadTrends() {
+            const run = ++trendRun;
+            const gran = trendGranularity;
+            const periods = trendPeriods(gran);
+            const status = document.getElementById('trendStatus');
+            const uncached = periods.filter(p => !trendCache[`${p.from}|${p.to}`]).length;
+            // Only show a loading line when there's real history to fetch, not on a routine refresh
+            if (uncached > 1 || !trendChartObjs.length) {
+                status.innerHTML = `<p class="trend-loading">Loading ${periods.length} ${gran === 'month' ? 'months' : 'weeks'} of history…</p>`;
+            }
+            const points = await mapLimit(periods, 3, p => fetchTrendPoint(p).catch(() => ({ failed: true })));
+            if (run !== trendRun) return; // a newer load (e.g. the other toggle) took over
+            status.innerHTML = '';
+            try {
+                renderTrendCharts(periods, points);
+            } catch (error) {
+                status.innerHTML = `<div class="error">Couldn't draw the trend charts: ${error.message}</div>`;
+                console.error('Trend render error:', error);
+            }
+        }
+
+        const TREND_FORMATS = {
+            aed: v => `AED ${formatAmount(Math.round(v))}`,
+            aed2: v => `AED ${formatCost(v)}`,
+            count: v => Math.round(v).toLocaleString(),
+            x: v => `${v.toFixed(2)}x`,
+            pct: v => `${v.toFixed(1)}%`
+        };
+        const TREND_AXIS = {
+            aed: v => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v),
+            aed2: v => formatAmount(v),
+            count: v => Number.isInteger(v) ? v.toLocaleString() : '',
+            x: v => `${v}x`,
+            pct: v => `${v}%`
+        };
+
+        const trendCpl = x => x && x.spend > 0 && x.leads > 0 ? x.spend / x.leads : null;
+        const trendRoas = x => x && x.spend > 0 ? x.revenue / x.spend : null;
+        const trendBaiRoas = x => x && x.spend > 0 ? x.baiSplit / x.spend : null;
+        const trendConv = x => x && x.leads > 0 ? x.sales / x.leads * 100 : null;
+
+        // Each chart: title, number format, whether it depends on ad spend (for gap notes),
+        // and its lines. val(f) maps f over the periods, leaving failed periods empty.
+        const C = TREND_COLORS;
+        const TREND_CHARTS = [
+            { id: 'trendMoney', title: 'Paid Spend, Revenue and BAI Split (AED)', unit: 'aed', usesSpend: true, series: val => [
+                { label: 'Spend', color: C.spend, data: val(t => t.anySpend ? t.paid.spend : null) },
+                { label: 'Revenue', color: C.revenue, data: val(t => t.paid.revenue) },
+                { label: 'BAI Split', color: C.bai, dash: true, data: val(t => t.paid.baiSplit) }
+            ] },
+            { id: 'trendSpend', title: 'Ad Spend by Channel (AED)', unit: 'aed', usesSpend: true, series: val =>
+                AD_PLATFORMS.map(pl => ({ label: pl.label, color: C[pl.key], data: val(t => t.platforms[pl.key].spend) }))
+            },
+            { id: 'trendLeads', title: 'Leads: Paid vs Unpaid', unit: 'count', series: val => [
+                { label: 'Paid', color: C.paid, data: val(t => t.paid.leads) },
+                { label: 'Unpaid', color: C.unpaid, dash: true, data: val(t => t.unpaid.leads) }
+            ] },
+            { id: 'trendSales', title: 'Sales: Paid vs Unpaid', unit: 'count', series: val => [
+                { label: 'Paid', color: C.paid, data: val(t => t.paid.sales) },
+                { label: 'Unpaid', color: C.unpaid, dash: true, data: val(t => t.unpaid.sales) }
+            ] },
+            { id: 'trendCpl', title: 'Cost per Lead by Channel (AED)', unit: 'aed2', usesSpend: true, series: val => [
+                ...AD_PLATFORMS.map(pl => ({ label: pl.label, color: C[pl.key], data: val(t => trendCpl(t.platforms[pl.key])) })),
+                { label: 'All paid', color: C.allPaid, dash: true, data: val(t => trendCpl(t.basis)) }
+            ] },
+            { id: 'trendConv', title: 'Conversion Rate (sales ÷ leads)', unit: 'pct', series: val => [
+                { label: 'Paid', color: C.paid, data: val(t => trendConv(t.paid)) },
+                { label: 'Unpaid', color: C.unpaid, dash: true, data: val(t => trendConv(t.unpaid)) }
+            ] },
+            { id: 'trendRoas', title: 'Return on Ad Spend, All Paid', unit: 'x', usesSpend: true, breakEven: true, series: val => [
+                { label: 'ROAS (revenue ÷ spend)', color: C.revenue, data: val(t => trendRoas(t.basis)) },
+                { label: 'BAI ROAS (BAI split ÷ spend)', color: C.bai, dash: true, data: val(t => trendBaiRoas(t.basis)) }
+            ] },
+            { id: 'trendBaiRoas', title: 'BAI ROAS by Channel', unit: 'x', usesSpend: true, breakEven: true, series: val =>
+                AD_PLATFORMS.map(pl => ({ label: pl.label, color: C[pl.key], data: val(t => trendBaiRoas(t.platforms[pl.key])) }))
+            }
+        ];
+
+        function renderTrendCharts(periods, points) {
+            trendChartObjs.forEach(c => c.destroy());
+            trendChartObjs = [];
+            const box = document.getElementById('trendCharts');
+            box.innerHTML = '';
+            if (!periods.length) return;
+
+            const last = periods.length - 1;
+            const partialLast = periods[last].partial;
+            const labels = periods.map(p => p.label + (p.partial ? '*' : ''));
+            const val = f => points.map(t => t.failed ? null : f(t));
+            const spendNote = i => {
+                const t = points[i];
+                if (!t || t.failed) return 'Data for this period could not be loaded';
+                const bits = [];
+                if (t.gaps.length) bits.push(`No ${t.gaps.join(' or ')} spend data for this period; all-paid ratios use only the other channels`);
+                if (t.partial.length) bits.push(`${t.partial.join(' and ')} spend data starts partway through this period`);
+                return bits.join('\n');
+            };
+
+            TREND_CHARTS.forEach(def => {
+                const div = document.createElement('div');
+                div.className = 'chart-container';
+                div.innerHTML = `<h3>${def.title}</h3><canvas id="${def.id}"></canvas>`;
+                box.appendChild(div);
+
+                const fmt = TREND_FORMATS[def.unit];
+                const datasets = def.series(val).map(s => ({
+                    label: s.label,
+                    data: s.data,
+                    borderColor: s.color,
+                    backgroundColor: s.color,
+                    borderWidth: 2,
+                    borderDash: s.dash ? [6, 4] : [],
+                    // The period still in progress is drawn dotted
+                    segment: { borderDash: ctx => partialLast && ctx.p1DataIndex === last ? [2, 4] : undefined },
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: s.color,
+                    pointBorderWidth: 2,
+                    tension: 0, // straight lines, so nothing is drawn between points that isn't in the data
+                    spanGaps: false
+                }));
+                if (def.breakEven) {
+                    datasets.push({
+                        label: 'Break-even (1x)', data: periods.map(() => 1), isRef: true,
+                        borderColor: '#9ca3af', backgroundColor: '#9ca3af', borderWidth: 1, borderDash: [3, 3],
+                        pointRadius: 0, pointHoverRadius: 0, fill: false
+                    });
+                }
+
+                trendChartObjs.push(new Chart(document.getElementById(def.id), {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top', labels: { boxWidth: 22, boxHeight: 2, color: '#374151' } },
+                            tooltip: {
+                                filter: item => !item.dataset.isRef && item.raw !== null && item.raw !== undefined,
+                                callbacks: {
+                                    title: items => {
+                                        const p = periods[items[0].dataIndex];
+                                        return `${rangeLabel(p.from, p.to)}${p.partial ? ' (in progress)' : ''}`;
+                                    },
+                                    label: item => `${item.dataset.label}: ${fmt(item.raw)}`,
+                                    afterBody: items => def.usesSpend && items.length ? spendNote(items[0].dataIndex) : ''
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#6b7280' } },
+                            y: {
+                                beginAtZero: true,
+                                grace: '5%',
+                                grid: { color: '#f0f0f0' },
+                                border: { display: false },
+                                ticks: { color: '#6b7280', callback: TREND_AXIS[def.unit] }
+                            }
+                        }
+                    }
+                }));
+            });
+
+            // Footnote: what the points are, plus any data gaps
+            const notes = [];
+            notes.push(trendGranularity === 'month'
+                ? 'Each point is one calendar month.'
+                : 'Each point is one week, Monday to Sunday.');
+            if (partialLast) notes.push(`* ${labels[last].replace('*', '')} is still in progress, so its line is dotted; its totals will keep rising until the ${trendGranularity} ends.`);
+            const failed = periods.filter((p, i) => points[i].failed).map(p => p.label);
+            if (failed.length) notes.push(`Couldn't load ${failed.join(', ')}; those points are left blank.`);
+            AD_PLATFORMS.forEach(pl => {
+                const missing = periods.filter((p, i) => !points[i].failed && points[i].gaps.includes(pl.label)).map(p => p.label);
+                if (missing.length) notes.push(`No ${pl.label} spend data for ${missing.length === periods.length ? 'any of these periods' : missing.join(', ')}, so its spend lines have gaps there.`);
+            });
+            notes.push('Leads exclude deleted leads. Hover any point for exact figures; click a legend item to hide or show that line.');
+            document.getElementById('trendNote').textContent = notes.join(' ');
         }
 
         // Boxes at the top: each paid channel's headline numbers, plus all paid ads combined
